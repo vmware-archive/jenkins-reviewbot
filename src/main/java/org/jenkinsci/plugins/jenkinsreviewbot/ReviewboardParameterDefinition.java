@@ -1,12 +1,15 @@
 package org.jenkinsci.plugins.jenkinsreviewbot;
 
 import hudson.Extension;
+import hudson.cli.CLICommand;
+import hudson.model.ParameterValue;
 import hudson.model.StringParameterDefinition;
 import hudson.model.StringParameterValue;
 import net.sf.json.JSONObject;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.StaplerRequest;
 
+import java.io.IOException;
 import java.lang.reflect.Field;
 
 /**
@@ -23,6 +26,10 @@ public class ReviewboardParameterDefinition extends StringParameterDefinition {
   @Override
   public String getDescription() {
     return Messages.ReviewboardParameterDefinition_Description();
+  }
+
+  public ParameterValue createValue(String value) {
+    return wrap((StringParameterValue) super.createValue(value));
   }
 
   @Override
