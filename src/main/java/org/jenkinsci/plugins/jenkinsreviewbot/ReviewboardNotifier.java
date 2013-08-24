@@ -58,7 +58,7 @@ public class ReviewboardNotifier extends Notifier implements MatrixAggregatable 
                    unstable    ? Messages.ReviewboardNotifier_BuildUnstable() + " " + link:
                                  Messages.ReviewboardNotifier_BuildFailure() + " " + link;
 
-      DESCRIPTOR.postComment(url, msg, success && getShipItOnSuccess());
+      DESCRIPTOR.getConnection().postComment(url, msg, success && getShipItOnSuccess());
     } catch (Exception e) {
       listener.getLogger().println("Error posting to reviewboard: " + e.toString());
     }
