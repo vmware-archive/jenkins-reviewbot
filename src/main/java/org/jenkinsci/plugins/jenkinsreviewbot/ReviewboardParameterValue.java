@@ -46,7 +46,6 @@ public class ReviewboardParameterValue extends ParameterValue {
   }
 
   private static final String LOCATION = "patch.diff";
-  private static final Pattern digitsPattern = Pattern.compile("\\d+");
 
 //  //TODO replace with a configurable parameter
 //  private static final String rb_url = System.getProperty("REVIEWBOARD_URL", "https://reviewboard.eng.vmware.com/");
@@ -104,7 +103,7 @@ public class ReviewboardParameterValue extends ParameterValue {
     File patchFile = null;
     try {
       patchFile = new File(LOCATION);
-      String diff = ReviewboardNotifier.DESCRIPTOR.getDiffAsString(url);
+      String diff = ReviewboardNotifier.DESCRIPTOR.getConnection().getDiffAsString(url);
       savePatch(patchFile, diff);
     } catch (IOException e) {
       e.printStackTrace();
@@ -120,17 +119,15 @@ public class ReviewboardParameterValue extends ParameterValue {
   }
 
   private String buildReviewUrl(String value) {
-    StringBuilder sb = new StringBuilder();
+    //if full url is given, just make sure iit ends with /
+    //but if a number is given, construct the url from number based on configured Reviewboard home URL
     if (!value.startsWith("http")) {
-      Matcher m = digitsPattern.matcher(value);
-      String number = m.find() ? m.group() : "0";
-      sb.append(ReviewboardNotifier.DESCRIPTOR.getReviewboardURL());
-      sb.append("r/").append(number).append('/');
+      return ReviewboardNotifier.DESCRIPTOR.getConnection().buildReviewUrl(value);
     } else {
-      sb.append(value);
+      StringBuilder sb = new StringBuilder(value);
       if (sb.charAt(sb.length() - 1) != '/' ) sb.append('/');
+      return sb.toString();
     }
-    return sb.toString();
   }
 
   private void applyPatch(BuildListener listener, FilePath patch) throws IOException, InterruptedException {
