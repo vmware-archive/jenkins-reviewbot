@@ -8,10 +8,11 @@ Presentation: http://www.cloudbees.com/jenkins/juc2013/juc2013-israel-abstracts.
 User Guide
 ==========
 
-I plan to make a binary version of the plugin available, but for now you need to build the plugin from source. It's easy:
+I plan to make a binary version of the plugin available, but for now you need to build the plugin from source:
 
-    mvn --settings jenkins-settings.xml clean install -DskipTests=true
+    mvn --settings jenkins-settings.xml package -DskipTests=true
 
+Once you got the plugin hpi file  
 * Install Patch-Parameter plugin (https://wiki.jenkins-ci.org/display/JENKINS/Patch+Parameter+Plugin), it is required for this plugin to work.
 * Add this plugin to your Jenkins (Plugins, Upload, ... jenkins-reviewbot.hpi).
 * Configure your reviewboard instance (URL, username, password) in Jenkins settings. It is recommended to test the connection before saving changes.
