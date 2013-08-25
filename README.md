@@ -27,3 +27,7 @@ My next task is to add support for automatic polling of Reviewboard, in the mean
     PASSWORD=...
     REVIEW=... e.g. https://rb.vmware.com/r/12345/
     curl -G -u $USER:$PASSWORD -d delay=0sec --data-urlencode review.url=$REVIEW $JENKINS/job/$JOBNAME/buildWithParameters
+
+Contributions
+==============
+Contact me (ymeymann at vmware dot com) for contribution license agreement
