@@ -9,7 +9,7 @@
   <!-- test 1 2 3 -->
   <groupId>org.jenkins-ci.plugins</groupId>
   <artifactId>jenkins-reviewbot</artifactId>
-  <version>1.0-SNAPSHOT</version>
+  <version>1.0</version>
   <packaging>hpi</packaging>
 
   <dependencies>
