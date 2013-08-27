@@ -8,26 +8,14 @@ Presentation: http://www.cloudbees.com/jenkins/juc2013/juc2013-israel-abstracts.
 User Guide
 ==========
 
-I plan to make a binary version of the plugin available, but for now you need to build the plugin from source:
-
-    mvn --settings jenkins-settings.xml package -DskipTests=true
-
-Once you got the plugin hpi file  
 * Install Patch-Parameter plugin (https://wiki.jenkins-ci.org/display/JENKINS/Patch+Parameter+Plugin), it is required for this plugin to work.
-* Add this plugin to your Jenkins (Plugins, Upload, ... jenkins-reviewbot.hpi).
+* Install this plugin
 * Configure your reviewboard instance (URL, username, password) in Jenkins settings. It is recommended to test the connection before saving changes.
 * Copy the job you want to use with this plugin, or create a new one. Add a parapeter called "review url"
 * Also add a post-build action "Post build result to reviewboard", you can select "ship it" if you want Jenkins to mark successfully build diffs. 
 * Now you can run the job providing it the url of the review request
 
-My next task is to add support for automatic polling of Reviewboard, in the meantime you can use curl to trigger it:
-
-    JENKINS=...
-    JOBNAME=...
-    USER=...
-    PASSWORD=...
-    REVIEW=... e.g. https://rb.vmware.com/r/12345/
-    curl -G -u $USER:$PASSWORD -d delay=0sec --data-urlencode review.url=$REVIEW $JENKINS/job/$JOBNAME/buildWithParameters
+For more details see https://wiki.jenkins-ci.org/display/JENKINS/Jenkins-Reviewbot
 
 Contributions
 ==============
