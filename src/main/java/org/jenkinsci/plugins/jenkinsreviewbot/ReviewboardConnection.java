@@ -322,13 +322,4 @@ public class ReviewboardConnection {
     String title;
   }
 
-  public static void main(String[] args) throws IOException, JAXBException, ParseException {
-    ReviewboardConnection con =
-        new ReviewboardConnection("https://reviewboard.eng.vmware.com/", "e_itbmbld_us_1",
-            "E4a2A.A@U.Y@U9Uhe7y");
-    Collection<String> r = con.getPendingReviews();
-    System.out.println("*** count =" + r.size());
-    System.out.println(Arrays.deepToString(r.toArray()));
-  }
-
 }
