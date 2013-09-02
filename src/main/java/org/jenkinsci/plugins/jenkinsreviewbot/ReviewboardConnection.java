@@ -22,6 +22,7 @@ IN THE SOFTWARE.
 
 package org.jenkinsci.plugins.jenkinsreviewbot;
 
+import com.google.common.base.Function;
 import com.google.common.base.Predicate;
 import com.google.common.collect.Collections2;
 import org.apache.commons.httpclient.HttpClient;
@@ -31,6 +32,7 @@ import org.apache.commons.httpclient.auth.AuthScope;
 import org.apache.commons.httpclient.methods.GetMethod;
 import org.apache.commons.httpclient.methods.PostMethod;
 
+import javax.annotation.Nullable;
 import javax.xml.bind.JAXBContext;
 import javax.xml.bind.JAXBException;
 import javax.xml.bind.Unmarshaller;
@@ -40,10 +42,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Date;
-import java.util.List;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -170,7 +169,7 @@ public class ReviewboardConnection {
     return sb.toString();
   }
 
-  Collection<?> getPendingReviews() throws IOException, JAXBException, ParseException {
+  Collection<String> getPendingReviews() throws IOException, JAXBException, ParseException {
     ensureAuthentication();
     ReviewsResponse response = unmarshalResponse(getXmlContent(getRequestsUrl()), ReviewsResponse.class);
     List<ReviewItem> list = response.requests.array;
@@ -185,7 +184,13 @@ public class ReviewboardConnection {
         }
       });
     Collection<ReviewItem> unhandled = Collections2.filter(hot, new NeedsBuild());
-    return unhandled;
+    Collection<String> res = Collections2.transform(unhandled, new Function<ReviewItem, String>() {
+      public String apply(ReviewItem input) {
+        StringBuilder sb = new StringBuilder().append(reviewboardURL).append("r/").append(input.id).append('/');
+        return sb.toString();
+      }
+    });
+    return res;
   }
 
   private static Date stringToDate(String str) {
@@ -316,4 +321,14 @@ public class ReviewboardConnection {
     @XmlElement
     String title;
   }
+
+  public static void main(String[] args) throws IOException, JAXBException, ParseException {
+    ReviewboardConnection con =
+        new ReviewboardConnection("https://reviewboard.eng.vmware.com/", "e_itbmbld_us_1",
+            "E4a2A.A@U.Y@U9Uhe7y");
+    Collection<String> r = con.getPendingReviews();
+    System.out.println("*** count =" + r.size());
+    System.out.println(Arrays.deepToString(r.toArray()));
+  }
+
 }
