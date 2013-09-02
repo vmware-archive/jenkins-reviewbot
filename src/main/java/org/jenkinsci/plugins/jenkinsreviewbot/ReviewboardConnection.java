@@ -22,6 +22,8 @@ IN THE SOFTWARE.
 
 package org.jenkinsci.plugins.jenkinsreviewbot;
 
+import com.google.common.base.Predicate;
+import com.google.common.collect.Collections2;
 import org.apache.commons.httpclient.HttpClient;
 import org.apache.commons.httpclient.NameValuePair;
 import org.apache.commons.httpclient.UsernamePasswordCredentials;
@@ -29,7 +31,19 @@ import org.apache.commons.httpclient.auth.AuthScope;
 import org.apache.commons.httpclient.methods.GetMethod;
 import org.apache.commons.httpclient.methods.PostMethod;
 
+import javax.xml.bind.JAXBContext;
+import javax.xml.bind.JAXBException;
+import javax.xml.bind.Unmarshaller;
+import javax.xml.bind.annotation.*;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Date;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -38,6 +52,10 @@ import java.util.regex.Pattern;
  * Date: 8/25/13 12:31 AM
  */
 public class ReviewboardConnection {
+
+  private static final SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+  private static final long HOUR = 60 * 60 * 1000;
+  private static final long DAY  = 24 * HOUR;
 
   private final HttpClient http;
 
@@ -152,5 +170,150 @@ public class ReviewboardConnection {
     return sb.toString();
   }
 
+  Collection<?> getPendingReviews() throws IOException, JAXBException, ParseException {
+    ensureAuthentication();
+    ReviewsResponse response = unmarshalResponse(getXmlContent(getRequestsUrl()), ReviewsResponse.class);
+    List<ReviewItem> list = response.requests.array;
+    Collections.sort(list, Collections.reverseOrder());
+    final long coldThreshold = stringToDate(list.get(0).lastUpdated).getTime() - DAY;
+    Collection<ReviewItem> hot = Collections2.filter(list,
+      new Predicate<ReviewItem>(){
+        public boolean apply(ReviewItem input) {
+          //filter non-master changes TODO support branches
+          return (input.branch.equals("") || input.branch.equals("master")) &&
+              stringToDate(input.lastUpdated).getTime() >= coldThreshold; //check that the review is not too old
+        }
+      });
+    Collection<ReviewItem> unhandled = Collections2.filter(hot, new NeedsBuild());
+    return unhandled;
+  }
 
+  private static Date stringToDate(String str) {
+    try {
+      return formatter.parse(str);
+    } catch (ParseException e) {
+      e.printStackTrace();
+      return null;
+    }
+  }
+
+  private InputStream getXmlContent(String requestsUrl) throws IOException {
+    GetMethod requests = new GetMethod(requestsUrl);
+    requests.setRequestHeader("Accept", "application/xml");
+    http.executeMethod(requests);
+    return requests.getResponseBodyAsStream();
+  }
+
+  private String getRequestsUrl() {
+    //e.g. https://reviewboard.eng.vmware.com/api/review-requests/?to-users=...
+    StringBuilder sb = new StringBuilder(128);
+    sb.append(reviewboardURL).append("/api/review-requests/");
+    sb.append('?').append("to-users=").append(reviewboardUsername);
+    sb.append('&').append("status=pending");
+    sb.append('&').append("max-results=200");
+    return sb.toString();
+  }
+
+  private String getDiffsUrl(long id) {
+    return buildUrl(id, "diffs");
+  }
+
+  private String getCommentsUrl(long id) {
+    return buildUrl(id, "reviews");
+  }
+
+  private String buildUrl(long id, String what) {
+    StringBuilder sb = new StringBuilder(128);
+    sb.append(reviewboardURL).append("/api/review-requests/").append(id).append("/").append(what).append("/");
+    return sb.toString();
+  }
+
+  private <T> T unmarshalResponse(InputStream res, Class<T> clazz) throws JAXBException {
+    JAXBContext jaxbContext = JAXBContext.newInstance(clazz);
+    Unmarshaller unmarshaller = jaxbContext.createUnmarshaller();
+    InputStreamReader reader = new InputStreamReader(res);
+    return clazz.cast(unmarshaller.unmarshal(reader));
+  }
+
+  private class NeedsBuild implements Predicate<ReviewItem> {
+    public boolean apply(ReviewItem input) {
+      try {
+        Response d = unmarshalResponse(getXmlContent(getDiffsUrl(input.id)), Response.class);
+        if (d.count < 1) return false; //no diffs found
+        Date lastUploadTime = stringToDate(d.diffs.array.get(d.count - 1).timestamp);
+        Response c = unmarshalResponse(getXmlContent(getCommentsUrl(input.id)), Response.class);
+        //no comments from this user after last diff upload
+        for (Item r : c.reviews.array) {
+          if (reviewboardUsername.equals(r.links.user.title) &&
+              stringToDate(r.timestamp).after(lastUploadTime)) {
+            return false;
+          }
+        }
+        return true;
+      } catch (Exception e) {
+        e.printStackTrace();
+        return false;
+      }
+    }
+  }
+
+  @XmlRootElement(name = "rsp")
+  public static class ReviewsResponse {
+    @XmlElement(name = "review_requests")
+    ReviewsRequests requests;
+    @XmlElement(name = "total_results")
+    String total;
+    @XmlElement
+    String stat;
+  }
+  public static class ReviewsRequests {
+    @XmlElementWrapper
+    @XmlElement(name = "item")
+    List<ReviewItem> array;
+  }
+  public static class ReviewItem implements Comparable<ReviewItem> {
+
+    @XmlElement(name = "last_updated")
+    String lastUpdated;
+    @XmlElement
+    String branch;
+    @XmlElement
+    long id;
+
+    public int compareTo(ReviewItem o) {
+      try {
+        return stringToDate(lastUpdated).compareTo(stringToDate(o.lastUpdated));
+      } catch (Exception e) {
+        return -1;
+      }
+    }
+  }
+  @XmlRootElement(name = "rsp")
+  public static class Response {
+    @XmlElement(name = "total_results")
+    int count;
+    @XmlElement
+    Items diffs;
+    @XmlElement
+    Items reviews;
+  }
+  public static class Items {
+    @XmlElementWrapper
+    @XmlElement(name = "item")
+    List<Item> array;
+  }
+  public static class Item {
+    @XmlElement
+    String timestamp;
+    @XmlElement
+    Links links;
+  }
+  public static class Links {
+    @XmlElement
+    User user;
+  }
+  public static class User {
+    @XmlElement
+    String title;
+  }
 }
