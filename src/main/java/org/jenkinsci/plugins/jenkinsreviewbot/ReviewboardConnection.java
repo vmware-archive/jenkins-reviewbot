@@ -32,7 +32,6 @@ import org.apache.commons.httpclient.auth.AuthScope;
 import org.apache.commons.httpclient.methods.GetMethod;
 import org.apache.commons.httpclient.methods.PostMethod;
 
-import javax.annotation.Nullable;
 import javax.xml.bind.JAXBContext;
 import javax.xml.bind.JAXBException;
 import javax.xml.bind.Unmarshaller;
@@ -54,7 +53,6 @@ public class ReviewboardConnection {
 
   private static final SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
   private static final long HOUR = 60 * 60 * 1000;
-  private static final long DAY  = 24 * HOUR;
 
   private final HttpClient http;
 
@@ -73,10 +71,10 @@ public class ReviewboardConnection {
   }
 
   private void initializeAuthentication() {
-    http.getParams().setAuthenticationPreemptive(true);
     String host = extractHost(reviewboardURL);
     http.getState().setCredentials(new AuthScope(host, 443, "Web API"),
         new UsernamePasswordCredentials(reviewboardUsername, reviewboardPassword));
+    http.getParams().setAuthenticationPreemptive(true);
   }
 
   public boolean logout() {
@@ -122,18 +120,33 @@ public class ReviewboardConnection {
   }
 
 
-  String getDiffAsString(String url) throws IOException {
+  private GetMethod execDiffMethod(String url) throws IOException {
     ensureAuthentication();
-    String diffUrl = url.concat("diff/raw/");
-    GetMethod diff = new GetMethod(diffUrl);
+    String diffUrl = buildApiUrl(url, "diffs");
+    Response d = unmarshalResponse(diffUrl, Response.class);
+    if (d.count < 1) throw new RuntimeException("Review " + url + " has no diffs");
+//    String diffUrl = url.concat("diff/raw/");
+    GetMethod diff = new GetMethod(diffUrl + d.count + "/");
+    diff.setRequestHeader("Accept", "text/x-patch");
     http.executeMethod(diff);
-    String res = diff.getResponseBodyAsString();
+    return diff;
+  }
+
+  String getDiffAsString(String url) throws IOException {
+    GetMethod get = execDiffMethod(url);
+    String res = get.getResponseBodyAsString();
+    return res;
+  }
+
+  InputStream getDiff(String url) throws IOException {
+    GetMethod get = execDiffMethod(url);
+    InputStream res = get.getResponseBodyAsStream();
     return res;
   }
 
   public boolean postComment(String url, String msg, boolean shipIt) throws IOException {
     ensureAuthentication();
-    String postUrl = buildReviewApiUrl(url);
+    String postUrl = buildApiUrl(url, "reviews");
     PostMethod post = new PostMethod(postUrl);
     NameValuePair[] data = {
         new NameValuePair("body_top", msg),
@@ -146,16 +159,17 @@ public class ReviewboardConnection {
     return response == 200;
   }
 
-  String buildReviewApiUrl(String url) {
+  String buildApiUrl(String url, String what) {
     //e.g. https://reviewboard.eng.vmware.com/r/474115/ ->
-    //     https://reviewboard.eng.vmware.com/api/review-requests/474115/reviews/
+    //     https://reviewboard.eng.vmware.com/api/review-requests/474115/${what}/
     int splitPoint = url.indexOf("/r/");
     StringBuilder sb = new StringBuilder(url.length() + 25);
     sb.append(url.substring(0, splitPoint));
     sb.append("/api/review-requests/");
     int idIndex = splitPoint + 3;
     sb.append(url.substring(idIndex, url.indexOf('/', idIndex)));
-    sb.append("/reviews/");
+    sb.append('/');
+    if (what != null && !what.isEmpty()) sb.append(what).append('/');
     String res = sb.toString();
     return res;
   }
@@ -169,18 +183,24 @@ public class ReviewboardConnection {
     return sb.toString();
   }
 
-  Collection<String> getPendingReviews() throws IOException, JAXBException, ParseException {
+  String getBranch(String url) throws IOException {
     ensureAuthentication();
-    ReviewsResponse response = unmarshalResponse(getXmlContent(getRequestsUrl()), ReviewsResponse.class);
+    ReviewRequest response = unmarshalResponse(buildApiUrl(url, ""), ReviewRequest.class);
+    String branch = response.request.branch;
+    return branch == null || branch.isEmpty() ? "master" : branch;
+  }
+
+  Collection<String> getPendingReviews(long periodInHours) throws IOException, JAXBException, ParseException {
+    ensureAuthentication();
+    ReviewsResponse response = unmarshalResponse(getRequestsUrl(), ReviewsResponse.class);
     List<ReviewItem> list = response.requests.array;
     Collections.sort(list, Collections.reverseOrder());
-    final long coldThreshold = stringToDate(list.get(0).lastUpdated).getTime() - DAY;
+    long period = periodInHours >= 0 ? periodInHours * HOUR : HOUR;
+    final long coldThreshold = stringToDate(list.get(0).lastUpdated).getTime() - period;
     Collection<ReviewItem> hot = Collections2.filter(list,
       new Predicate<ReviewItem>(){
         public boolean apply(ReviewItem input) {
-          //filter non-master changes TODO support branches
-          return (input.branch.equals("") || input.branch.equals("master")) &&
-              stringToDate(input.lastUpdated).getTime() >= coldThreshold; //check that the review is not too old
+          return stringToDate(input.lastUpdated).getTime() >= coldThreshold; //check that the review is not too old
         }
       });
     Collection<ReviewItem> unhandled = Collections2.filter(hot, new NeedsBuild());
@@ -197,8 +217,7 @@ public class ReviewboardConnection {
     try {
       return formatter.parse(str);
     } catch (ParseException e) {
-      e.printStackTrace();
-      return null;
+      throw new RuntimeException(e);
     }
   }
 
@@ -220,48 +239,54 @@ public class ReviewboardConnection {
   }
 
   private String getDiffsUrl(long id) {
-    return buildUrl(id, "diffs");
+    return buildApiUrlFromId(id, "diffs");
   }
 
   private String getCommentsUrl(long id) {
-    return buildUrl(id, "reviews");
+    return buildApiUrlFromId(id, "reviews");
   }
 
-  private String buildUrl(long id, String what) {
+  private String buildApiUrlFromId(long id, String what) {
     StringBuilder sb = new StringBuilder(128);
-    sb.append(reviewboardURL).append("/api/review-requests/").append(id).append("/").append(what).append("/");
+    sb.append(reviewboardURL).append("/api/review-requests/").append(id).append('/');
+    if (what != null && !what.isEmpty()) sb.append(what).append('/');
     return sb.toString();
   }
 
-  private <T> T unmarshalResponse(InputStream res, Class<T> clazz) throws JAXBException {
-    JAXBContext jaxbContext = JAXBContext.newInstance(clazz);
-    Unmarshaller unmarshaller = jaxbContext.createUnmarshaller();
-    InputStreamReader reader = new InputStreamReader(res);
-    return clazz.cast(unmarshaller.unmarshal(reader));
+  private <T> T unmarshalResponse(String requestUrl, Class<T> clazz) {
+    try {
+      InputStream res = getXmlContent(requestUrl);
+      JAXBContext jaxbContext = JAXBContext.newInstance(clazz);
+      Unmarshaller unmarshaller = jaxbContext.createUnmarshaller();
+      InputStreamReader reader = new InputStreamReader(res);
+      return clazz.cast(unmarshaller.unmarshal(reader));
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
   }
 
   private class NeedsBuild implements Predicate<ReviewItem> {
     public boolean apply(ReviewItem input) {
-      try {
-        Response d = unmarshalResponse(getXmlContent(getDiffsUrl(input.id)), Response.class);
-        if (d.count < 1) return false; //no diffs found
-        Date lastUploadTime = stringToDate(d.diffs.array.get(d.count - 1).timestamp);
-        Response c = unmarshalResponse(getXmlContent(getCommentsUrl(input.id)), Response.class);
-        //no comments from this user after last diff upload
-        for (Item r : c.reviews.array) {
-          if (reviewboardUsername.equals(r.links.user.title) &&
-              stringToDate(r.timestamp).after(lastUploadTime)) {
-            return false;
-          }
+      Response d = unmarshalResponse(getDiffsUrl(input.id), Response.class);
+      if (d.count < 1) return false; //no diffs found
+      Date lastUploadTime = stringToDate(d.diffs.array.get(d.count - 1).timestamp);
+      Response c = unmarshalResponse(getCommentsUrl(input.id), Response.class);
+      //no comments from this user after last diff upload
+      for (Item r : c.reviews.array) {
+        if (reviewboardUsername.equals(r.links.user.title) &&
+            stringToDate(r.timestamp).after(lastUploadTime)) {
+          return false;
         }
-        return true;
-      } catch (Exception e) {
-        e.printStackTrace();
-        return false;
       }
+      return true;
     }
   }
 
+  @XmlRootElement(name = "rsp")
+  public static class ReviewRequest {
+    @XmlElement(name = "review_request")
+    ReviewItem request;
+  }
   @XmlRootElement(name = "rsp")
   public static class ReviewsResponse {
     @XmlElement(name = "review_requests")

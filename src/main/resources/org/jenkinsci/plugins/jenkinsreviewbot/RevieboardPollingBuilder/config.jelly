@@ -1,0 +1,8 @@
+<j:jelly xmlns:j="jelly:core" xmlns:st="jelly:stapler" xmlns:d="jelly:define" xmlns:l="/lib/layout" xmlns:t="/lib/hudson" xmlns:f="/lib/form">
+  <f:entry title="Job Name" field="reviewbotJobName" description="Name of the job to run for each changed review">
+    <f:textbox />
+	</f:entry>
+  <f:entry title="Check reviews updated in last" field="checkBackPeriod" description="Reviews last updated at most this many hours back will be considered for testing">
+    <f:textbox default="1"/> hour(s)
+	</f:entry>
+</j:jelly>

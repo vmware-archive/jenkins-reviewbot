@@ -33,6 +33,7 @@ import hudson.model.FileParameterValue;
 import hudson.model.ParameterValue;
 import hudson.remoting.VirtualChannel;
 import hudson.tasks.BuildWrapper;
+import hudson.util.IOException2;
 import hudson.util.VariableResolver;
 import org.apache.commons.fileupload.FileItem;
 import org.apache.commons.lang.StringUtils;
@@ -69,9 +70,6 @@ public class ReviewboardParameterValue extends ParameterValue {
 
   private static final String LOCATION = "patch.diff";
 
-//  //TODO replace with a configurable parameter
-//  private static final String rb_url = System.getProperty("REVIEWBOARD_URL", "https://reviewboard.eng.vmware.com/");
-
   @Override
   public BuildWrapper createBuildWrapper(AbstractBuild<?,?> build) {
     return new ReviewboardBuildWrapper() ;
@@ -90,10 +88,10 @@ public class ReviewboardParameterValue extends ParameterValue {
   }
 
   // copied from PatchParameterValue
-  @Override
-  public void buildEnvVars(AbstractBuild<?, ?> build, EnvVars env) {
-    // no environment variable
-  }
+//  @Override
+//  public void buildEnvVars(AbstractBuild<?, ?> build, EnvVars env) {
+//    // no environment variable
+//  }
 
   // copied from PatchParameterValue
   @Override
@@ -121,16 +119,21 @@ public class ReviewboardParameterValue extends ParameterValue {
     return result;
   }
 
-  private FileItem getDiffFile() {
-    File patchFile = null;
-    try {
-      patchFile = new File(LOCATION);
-      String diff = ReviewboardNotifier.DESCRIPTOR.getConnection().getDiffAsString(url);
-      savePatch(patchFile, diff);
-    } catch (IOException e) {
-      e.printStackTrace();
-    }
-    return new FileParameterValue.FileItemImpl(patchFile);
+//  private FileItem getDiffFile() {
+//    File patchFile = null;
+//    try {
+//      File tempDir = new File(System.getProperty("java.io.tmpdir"));
+//      patchFile = new File(tempDir, LOCATION);
+//      String diff = connection().getDiffAsString(url);
+//      savePatch(patchFile, diff);
+//    } catch (IOException e) {
+//      e.printStackTrace();
+//    }
+//    return new FileParameterValue.FileItemImpl(patchFile);
+//  }
+
+  private static ReviewboardConnection connection() {
+    return ReviewboardNotifier.DESCRIPTOR.getConnection();
   }
 
   private void savePatch(File patchFile, String diff) throws IOException {
@@ -144,7 +147,7 @@ public class ReviewboardParameterValue extends ParameterValue {
     //if full url is given, just make sure iit ends with /
     //but if a number is given, construct the url from number based on configured Reviewboard home URL
     if (!value.startsWith("http")) {
-      return ReviewboardNotifier.DESCRIPTOR.getConnection().buildReviewUrl(value);
+      return connection().buildReviewUrl(value);
     } else {
       StringBuilder sb = new StringBuilder(value);
       if (sb.charAt(sb.length() - 1) != '/' ) sb.append('/');
@@ -154,21 +157,28 @@ public class ReviewboardParameterValue extends ParameterValue {
 
   private void applyPatch(BuildListener listener, FilePath patch) throws IOException, InterruptedException {
     listener.getLogger().println("Applying "+ ReviewboardNote.encodeTo("the diff"));
-    List<ContextualPatch.PatchReport> reports = patch.act(new ApplyTask());
-    for (ContextualPatch.PatchReport r : reports) {
-      if (r.getFailure()!=null) {
-        listener.getLogger().println("Failed to patch "+r.getFile()+" due to "+r.getFailure().toString());
-        setPatchFailed(true);
-        throw new IOException("Failed to patch "+r.getFile(), r.getFailure());
-      }
+    try {
+      patch.act(new ApplyTask());
+    } catch (IOException e) {
+      listener.getLogger().println("Failed to apply patch due to:");
+      e.printStackTrace(listener.getLogger());
+      setPatchFailed(true);
+      throw e;
     }
   }
 
 //  copied from FileParameterValue
-//  @Override
-//  public void buildEnvVars(AbstractBuild<?,?> build, EnvVars env) {
-//    env.put(name,url);
-//  }
+  @Override
+  public void buildEnvVars(AbstractBuild<?,?> build, EnvVars env) {
+    env.put("REVIEW_URL",url);
+    String branch = "master";
+    try {
+      branch = connection().getBranch(url);
+    } catch (IOException e) {
+      e.printStackTrace();
+    }
+    env.put("REVIEW_BRANCH", branch);
+  }
 
 //  copied from FileParameterValue
 //  @Override
@@ -187,7 +197,7 @@ public class ReviewboardParameterValue extends ParameterValue {
         FilePath patch = build.getWorkspace().child(LOCATION);
         patch.delete();
         patch.getParent().mkdirs();
-        patch.copyFrom(getDiffFile());
+        patch.copyFrom(connection().getDiff(url)); //getDiffFile()
         patch.copyTo(new FilePath(getLocationUnderBuild(build)));
         if (patch.exists()) {
           applyPatch(listener, patch);
@@ -197,17 +207,21 @@ public class ReviewboardParameterValue extends ParameterValue {
     }
   }
 
-  static class ApplyTask implements FilePath.FileCallable<List<ContextualPatch.PatchReport>> {
+  static class ApplyTask implements FilePath.FileCallable<Void> {
     private static final long serialVersionUID = 1L;
 
-    public List<ContextualPatch.PatchReport> invoke(File diff, VirtualChannel channel) throws IOException, InterruptedException {
+    public Void invoke(File diff, VirtualChannel channel) throws IOException, InterruptedException {
       ContextualPatch patch = ContextualPatch.create(diff,diff.getParentFile());
       try {
         List<ContextualPatch.PatchReport> reports = patch.patch(false);
-        return reports;
+        for (ContextualPatch.PatchReport r : reports) {
+          if (r.getFailure()!=null)
+            throw new IOException("Failed to patch " + r.getFile(), r.getFailure());
+        }
       } catch (PatchException e) {
-        throw new IOException("Failed to apply the patch: "+diff,e);
+        throw new IOException2("Failed to apply the patch: "+diff,e);
       }
+      return null;
     }
   }
 
