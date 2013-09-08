@@ -31,6 +31,7 @@ import jenkins.model.Jenkins;
 import org.kohsuke.stapler.DataBoundConstructor;
 
 import java.util.Collection;
+import java.util.List;
 
 /**
  * User: ymeymann
@@ -63,17 +64,24 @@ public class RevieboardPollingBuilder extends Builder {
     try {
       Collection<String> reviews = connection().getPendingReviews(period);
       listener.getLogger().println("Got " + reviews.size() + " reviews");
+      if (reviews.isEmpty()) return true;
+      Cause cause = new Cause.UpstreamCause(build); //TODO not sure what should be put here
+      listener.getLogger().println("Setting cause to this build");
+      AbstractProject project = Jenkins.getInstance().getItem(reviewbotJobName, Jenkins.getInstance(), AbstractProject.class);
+      if (project == null) {
+        listener.getLogger().println("ERROR: Job named " + reviewbotJobName + " not found");
+        return false;
+      }
+      listener.getLogger().println("Found job " + reviewbotJobName);
       for (String review : reviews) {
         listener.getLogger().println(review);
-        Cause cause = new Cause.UpstreamCause(build); //TODO not sure what should be put here
-        Project p = Jenkins.getInstance().getItem(reviewbotJobName, Jenkins.getInstance(), Project.class);
-        p.scheduleBuild2(p.getQuietPeriod(),
+        project.scheduleBuild2(project.getQuietPeriod(),
             cause,
             new ParametersAction(new ReviewboardParameterValue("review.url", review)));
       }
       return true;
     } catch (Exception e) {
-      e.printStackTrace();
+      e.printStackTrace(listener.getLogger());
       return false;
     }
   }

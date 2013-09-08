@@ -194,6 +194,7 @@ public class ReviewboardConnection {
     ensureAuthentication();
     ReviewsResponse response = unmarshalResponse(getRequestsUrl(), ReviewsResponse.class);
     List<ReviewItem> list = response.requests.array;
+    if (list == null || list.isEmpty()) return Collections.EMPTY_LIST;
     Collections.sort(list, Collections.reverseOrder());
     long period = periodInHours >= 0 ? periodInHours * HOUR : HOUR;
     final long coldThreshold = stringToDate(list.get(0).lastUpdated).getTime() - period;
