@@ -27,11 +27,11 @@ import hudson.Launcher;
 import hudson.model.*;
 import hudson.tasks.BuildStepDescriptor;
 import hudson.tasks.Builder;
+import hudson.util.ListBoxModel;
 import jenkins.model.Jenkins;
 import org.kohsuke.stapler.DataBoundConstructor;
 
 import java.util.Collection;
-import java.util.List;
 
 /**
  * User: ymeymann
@@ -67,7 +67,8 @@ public class RevieboardPollingBuilder extends Builder {
       if (reviews.isEmpty()) return true;
       Cause cause = new Cause.UpstreamCause(build); //TODO not sure what should be put here
       listener.getLogger().println("Setting cause to this build");
-      AbstractProject project = Jenkins.getInstance().getItem(reviewbotJobName, Jenkins.getInstance(), AbstractProject.class);
+      Jenkins jenkins = Jenkins.getInstance();
+      AbstractProject project = jenkins.getItem(reviewbotJobName, jenkins, AbstractProject.class);
       if (project == null) {
         listener.getLogger().println("ERROR: Job named " + reviewbotJobName + " not found");
         return false;
@@ -107,6 +108,14 @@ public class RevieboardPollingBuilder extends Builder {
     @Override
     public boolean isApplicable(Class type) {
       return true;
+    }
+
+    public ListBoxModel doFillReviewbotJobNameItems() {
+      ListBoxModel items = new ListBoxModel();
+      for (AbstractProject project: Jenkins.getInstance().getAllItems(AbstractProject.class)) {
+        items.add(project.getName());
+      }
+      return items;
     }
   }
 
