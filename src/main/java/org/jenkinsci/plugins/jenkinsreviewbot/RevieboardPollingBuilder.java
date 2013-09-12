@@ -41,6 +41,7 @@ public class RevieboardPollingBuilder extends Builder {
 
   private final String reviewbotJobName;
   private final String checkBackPeriod;
+  private transient volatile ReviewboardConnection connection = null;
 
   @DataBoundConstructor
   public RevieboardPollingBuilder(String reviewbotJobName, String checkBackPeriod) {
@@ -61,8 +62,9 @@ public class RevieboardPollingBuilder extends Builder {
     listener.getLogger().println("Looking for reviews that need building...");
     long period = checkBackPeriod != null && !checkBackPeriod.isEmpty() ? Long.parseLong(checkBackPeriod) : 1L;
     listener.getLogger().println("Going to check reviews updated during last " + period + " hour(s)");
+    ReviewboardConnection con = getConnection();
     try {
-      Collection<String> reviews = connection().getPendingReviews(period);
+      Collection<String> reviews = con.getPendingReviews(period);
       listener.getLogger().println("Got " + reviews.size() + " reviews");
       if (reviews.isEmpty()) return true;
       Cause cause = new Cause.UpstreamCause(build); //TODO not sure what should be put here
@@ -84,11 +86,19 @@ public class RevieboardPollingBuilder extends Builder {
     } catch (Exception e) {
       e.printStackTrace(listener.getLogger());
       return false;
+    } finally {
+      if (con != null) con.close();
     }
   }
 
-  private static ReviewboardConnection connection() {
-    return ReviewboardNotifier.DESCRIPTOR.getConnection();
+  synchronized ReviewboardConnection getConnection() {
+    if (connection == null) {
+      ReviewboardDescriptor d = ReviewboardNotifier.DESCRIPTOR;
+      connection = new ReviewboardConnection(d.getReviewboardURL(),
+                                             d.getReviewboardUsername(),
+                                             d.getReviewboardPassword());
+    }
+    return connection;
   }
 
   @Override

@@ -45,8 +45,7 @@ import java.io.IOException;
 */
 public class ReviewboardDescriptor extends BuildStepDescriptor<Publisher> {
 
-//  private final HttpClient http = new HttpClient();
-  private volatile ReviewboardConnection connection;
+//  private volatile ReviewboardConnection connection;
 
   private String reviewboardURL;
   private String reviewboardUsername;
@@ -57,13 +56,13 @@ public class ReviewboardDescriptor extends BuildStepDescriptor<Publisher> {
     load();
   }
 
-  public synchronized ReviewboardConnection getConnection() {
-    if (connection == null) {
-      connection = new ReviewboardConnection(getReviewboardURL(), getReviewboardUsername(), getReviewboardPassword());
-    }
-    return connection;
-  }
-
+//  public synchronized ReviewboardConnection getConnection() {
+//    if (connection == null) {
+//      connection = new ReviewboardConnection(getReviewboardURL(), getReviewboardUsername(), getReviewboardPassword());
+//    }
+//    return connection;
+//  }
+//
   @Override
   public String getDisplayName() {
     return Messages.ReviewboardNotifier_DisplayName();
@@ -100,11 +99,11 @@ public class ReviewboardDescriptor extends BuildStepDescriptor<Publisher> {
 //    if (oldConnection != null) {
 //      oldConnection.logout();
 //    }
-    if (reviewboardURL == null || reviewboardURL.isEmpty()) {
-      connection = null;
-    } else {
-      connection = new ReviewboardConnection(getReviewboardURL(), getReviewboardUsername(), getReviewboardPassword());
-    }
+//    if (reviewboardURL == null || reviewboardURL.isEmpty()) {
+//      connection = null;
+//    } else {
+//      connection = new ReviewboardConnection(getReviewboardURL(), getReviewboardUsername(), getReviewboardPassword());
+//    }
     save();
     return super.configure(req,formData);
   }

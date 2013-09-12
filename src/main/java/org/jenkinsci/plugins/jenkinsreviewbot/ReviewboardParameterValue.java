@@ -28,21 +28,18 @@ import hudson.EnvVars;
 import hudson.FilePath;
 import hudson.Launcher;
 import hudson.model.AbstractBuild;
+import hudson.model.Build;
 import hudson.model.BuildListener;
-import hudson.model.FileParameterValue;
 import hudson.model.ParameterValue;
 import hudson.remoting.VirtualChannel;
 import hudson.tasks.BuildWrapper;
 import hudson.util.IOException2;
 import hudson.util.VariableResolver;
-import org.apache.commons.fileupload.FileItem;
 import org.apache.commons.lang.StringUtils;
 import org.kohsuke.stapler.DataBoundConstructor;
 
 import java.io.*;
 import java.util.List;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * User: ymeymann
@@ -52,6 +49,7 @@ public class ReviewboardParameterValue extends ParameterValue {
 
   private final String url;
   private boolean patchFailed = false;
+  private transient volatile ReviewboardConnection connection = null;
 
   @DataBoundConstructor
   public ReviewboardParameterValue(String name, String value) {
@@ -124,7 +122,7 @@ public class ReviewboardParameterValue extends ParameterValue {
 //    try {
 //      File tempDir = new File(System.getProperty("java.io.tmpdir"));
 //      patchFile = new File(tempDir, LOCATION);
-//      String diff = connection().getDiffAsString(url);
+//      String diff = getConnection().getDiffAsString(url);
 //      savePatch(patchFile, diff);
 //    } catch (IOException e) {
 //      e.printStackTrace();
@@ -132,8 +130,14 @@ public class ReviewboardParameterValue extends ParameterValue {
 //    return new FileParameterValue.FileItemImpl(patchFile);
 //  }
 
-  private static ReviewboardConnection connection() {
-    return ReviewboardNotifier.DESCRIPTOR.getConnection();
+  synchronized ReviewboardConnection getConnection() {
+    if (connection == null) {
+      ReviewboardDescriptor d = ReviewboardNotifier.DESCRIPTOR;
+      connection = new ReviewboardConnection(d.getReviewboardURL(),
+          d.getReviewboardUsername(),
+          d.getReviewboardPassword());
+    }
+    return connection;
   }
 
   private void savePatch(File patchFile, String diff) throws IOException {
@@ -147,7 +151,7 @@ public class ReviewboardParameterValue extends ParameterValue {
     //if full url is given, just make sure iit ends with /
     //but if a number is given, construct the url from number based on configured Reviewboard home URL
     if (!value.startsWith("http")) {
-      return connection().buildReviewUrl(value);
+      return getConnection().buildReviewUrl(value);
     } else {
       StringBuilder sb = new StringBuilder(value);
       if (sb.charAt(sb.length() - 1) != '/' ) sb.append('/');
@@ -173,7 +177,7 @@ public class ReviewboardParameterValue extends ParameterValue {
     env.put("REVIEW_URL",url);
     String branch = "master";
     try {
-      branch = connection().getBranch(url);
+      branch = getConnection().getBranch(url);
     } catch (IOException e) {
       e.printStackTrace();
     }
@@ -197,13 +201,19 @@ public class ReviewboardParameterValue extends ParameterValue {
         FilePath patch = build.getWorkspace().child(LOCATION);
         patch.delete();
         patch.getParent().mkdirs();
-        patch.copyFrom(connection().getDiff(url)); //getDiffFile()
+        patch.copyFrom(getConnection().getDiff(url)); //getDiffFile()
         patch.copyTo(new FilePath(getLocationUnderBuild(build)));
         if (patch.exists()) {
           applyPatch(listener, patch);
         }
       }
-      return new BuildWrapper.Environment() {};
+      return new BuildWrapper.Environment() {
+        @Override
+        public boolean tearDown( AbstractBuild build, BuildListener listener ) throws IOException, InterruptedException {
+          if (connection != null) connection.close();
+          return super.tearDown(build, listener);
+        }
+      };
     }
   }
 

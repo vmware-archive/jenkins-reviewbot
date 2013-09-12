@@ -27,6 +27,7 @@ import com.google.common.base.Predicate;
 import com.google.common.collect.Collections2;
 import org.apache.commons.httpclient.HttpClient;
 import org.apache.commons.httpclient.NameValuePair;
+import org.apache.commons.httpclient.SimpleHttpConnectionManager;
 import org.apache.commons.httpclient.UsernamePasswordCredentials;
 import org.apache.commons.httpclient.auth.AuthScope;
 import org.apache.commons.httpclient.methods.GetMethod;
@@ -86,6 +87,10 @@ public class ReviewboardConnection {
       //ignore
       return false;
     }
+  }
+
+  public void close() {
+    ((SimpleHttpConnectionManager)http.getHttpConnectionManager()).shutdown();
   }
 
   String extractHost(String url) {
@@ -165,7 +170,7 @@ public class ReviewboardConnection {
     int splitPoint = url.indexOf("/r/");
     StringBuilder sb = new StringBuilder(url.length() + 25);
     sb.append(url.substring(0, splitPoint));
-    sb.append("/api/review-requests/");
+    sb.append("api/review-requests/");
     int idIndex = splitPoint + 3;
     sb.append(url.substring(idIndex, url.indexOf('/', idIndex)));
     sb.append('/');
@@ -232,7 +237,7 @@ public class ReviewboardConnection {
   private String getRequestsUrl() {
     //e.g. https://reviewboard.eng.vmware.com/api/review-requests/?to-users=...
     StringBuilder sb = new StringBuilder(128);
-    sb.append(reviewboardURL).append("/api/review-requests/");
+    sb.append(reviewboardURL).append("api/review-requests/");
     sb.append('?').append("to-users=").append(reviewboardUsername);
     sb.append('&').append("status=pending");
     sb.append('&').append("max-results=200");
@@ -249,7 +254,7 @@ public class ReviewboardConnection {
 
   private String buildApiUrlFromId(long id, String what) {
     StringBuilder sb = new StringBuilder(128);
-    sb.append(reviewboardURL).append("/api/review-requests/").append(id).append('/');
+    sb.append(reviewboardURL).append("api/review-requests/").append(id).append('/');
     if (what != null && !what.isEmpty()) sb.append(what).append('/');
     return sb.toString();
   }
@@ -347,5 +352,22 @@ public class ReviewboardConnection {
     @XmlElement
     String title;
   }
+
+  public static void main(String[] args) throws IOException, JAXBException, ParseException {
+    ReviewboardConnection con =
+        new ReviewboardConnection(System.getProperty("reviewboard.url"),
+            System.getProperty("reviewboard.user"),
+            System.getProperty("reviewboard.pwd"));
+//    String diff = con.getDiffAsString("https://reviewboard.eng.vmware.com/r/475848/");
+//    System.out.println(diff);
+
+    int count = con.getPendingReviews(24).size();
+    con.close();
+    System.out.println(count);
+
+//    String branch = con.getBranch("https://reviewboard.eng.vmware.com/r/514656/");
+//    System.out.println(branch);
+  }
+
 
 }
