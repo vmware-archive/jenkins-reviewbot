@@ -1,5 +1,6 @@
 package org.jenkinsci.plugins.jenkinsreviewbot;
 
+import org.junit.Ignore;
 import org.junit.Test;
 
 import static junit.framework.Assert.assertEquals;
@@ -9,6 +10,7 @@ import static junit.framework.Assert.assertNotNull;
  * User: ymeymann
  * Date: 9/13/13 12:52 AM
  */
+@Ignore
 public class ConnectionTest {
 
   ReviewboardConnection con =
