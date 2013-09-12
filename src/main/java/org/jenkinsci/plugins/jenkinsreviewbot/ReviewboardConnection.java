@@ -353,22 +353,4 @@ public class ReviewboardConnection {
     String title;
   }
 
-  public static void main(String[] args) throws IOException, JAXBException, ParseException {
-    ReviewboardConnection con =
-        new ReviewboardConnection(System.getProperty("reviewboard.url"),
-            System.getProperty("reviewboard.user"),
-            System.getProperty("reviewboard.pwd"));
-
-    String diff = con.getDiffAsString("https://reviewboard.eng.vmware.com/r/475848/");
-    System.out.println(diff);
-
-    int count = con.getPendingReviews(24).size();
-    con.close();
-    System.out.println(count);
-
-//    String branch = con.getBranch("https://reviewboard.eng.vmware.com/r/514656/");
-//    System.out.println(branch);
-  }
-
-
 }
