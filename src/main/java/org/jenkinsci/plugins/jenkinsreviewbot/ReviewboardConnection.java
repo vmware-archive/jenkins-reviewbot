@@ -170,7 +170,7 @@ public class ReviewboardConnection {
     int splitPoint = url.indexOf("/r/");
     StringBuilder sb = new StringBuilder(url.length() + 25);
     sb.append(url.substring(0, splitPoint));
-    sb.append("api/review-requests/");
+    sb.append("/api/review-requests/");
     int idIndex = splitPoint + 3;
     sb.append(url.substring(idIndex, url.indexOf('/', idIndex)));
     sb.append('/');
@@ -358,8 +358,9 @@ public class ReviewboardConnection {
         new ReviewboardConnection(System.getProperty("reviewboard.url"),
             System.getProperty("reviewboard.user"),
             System.getProperty("reviewboard.pwd"));
-//    String diff = con.getDiffAsString("https://reviewboard.eng.vmware.com/r/475848/");
-//    System.out.println(diff);
+
+    String diff = con.getDiffAsString("https://reviewboard.eng.vmware.com/r/475848/");
+    System.out.println(diff);
 
     int count = con.getPendingReviews(24).size();
     con.close();

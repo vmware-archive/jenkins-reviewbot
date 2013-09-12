@@ -78,6 +78,7 @@ public class RevieboardPollingBuilder extends Builder {
       listener.getLogger().println("Found job " + reviewbotJobName);
       for (String review : reviews) {
         listener.getLogger().println(review);
+        con.postComment(review, Messages.ReviewboardPollingBuilder_Notice(), false);
         project.scheduleBuild2(project.getQuietPeriod(),
             cause,
             new ParametersAction(new ReviewboardParameterValue("review.url", review)));
