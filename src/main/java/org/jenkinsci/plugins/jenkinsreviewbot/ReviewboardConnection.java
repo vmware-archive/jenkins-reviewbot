@@ -110,7 +110,7 @@ public class ReviewboardConnection {
 
   private int ensureAuthentication(boolean withRetry) throws IOException {
     try {
-      GetMethod url = new GetMethod(reviewboardURL + "api/session");
+      GetMethod url = new GetMethod(reviewboardURL + "api/session/");
       url.setDoAuthentication(true);
       return http.executeMethod(url);
     } catch (IOException e) {
