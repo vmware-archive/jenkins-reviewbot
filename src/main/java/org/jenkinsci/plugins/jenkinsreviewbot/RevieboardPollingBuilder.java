@@ -41,7 +41,6 @@ public class RevieboardPollingBuilder extends Builder {
 
   private final String reviewbotJobName;
   private final String checkBackPeriod;
-  private transient volatile ReviewboardConnection connection = null;
 
   @DataBoundConstructor
   public RevieboardPollingBuilder(String reviewbotJobName, String checkBackPeriod) {
@@ -62,7 +61,9 @@ public class RevieboardPollingBuilder extends Builder {
     listener.getLogger().println("Looking for reviews that need building...");
     long period = checkBackPeriod != null && !checkBackPeriod.isEmpty() ? Long.parseLong(checkBackPeriod) : 1L;
     listener.getLogger().println("Going to check reviews updated during last " + period + " hour(s)");
-    ReviewboardConnection con = getConnection();
+    ReviewboardDescriptor d = ReviewboardNotifier.DESCRIPTOR;
+    ReviewboardConnection con = new ReviewboardConnection(d.getReviewboardURL(),
+                                                          d.getReviewboardUsername(), d.getReviewboardPassword());
     try {
       Collection<String> reviews = con.getPendingReviews(period);
       listener.getLogger().println("Got " + reviews.size() + " reviews");
@@ -90,16 +91,6 @@ public class RevieboardPollingBuilder extends Builder {
     } finally {
       if (con != null) con.close();
     }
-  }
-
-  synchronized ReviewboardConnection getConnection() {
-    if (connection == null) {
-      ReviewboardDescriptor d = ReviewboardNotifier.DESCRIPTOR;
-      connection = new ReviewboardConnection(d.getReviewboardURL(),
-                                             d.getReviewboardUsername(),
-                                             d.getReviewboardPassword());
-    }
-    return connection;
   }
 
   @Override

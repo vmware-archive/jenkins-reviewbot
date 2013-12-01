@@ -28,7 +28,6 @@ import hudson.EnvVars;
 import hudson.FilePath;
 import hudson.Launcher;
 import hudson.model.AbstractBuild;
-import hudson.model.Build;
 import hudson.model.BuildListener;
 import hudson.model.ParameterValue;
 import hudson.remoting.VirtualChannel;

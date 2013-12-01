@@ -160,7 +160,6 @@ public class ReviewboardConnection {
     };
     post.setRequestBody(data);
     int response = http.executeMethod(post);
-    String responseBody = post.getResponseBodyAsString();
     return response == 200;
   }
 
@@ -180,11 +179,14 @@ public class ReviewboardConnection {
   }
 
   String buildReviewUrl(String value) {
-    StringBuilder sb = new StringBuilder();
     Matcher m = digitsPattern.matcher(value);
     String number = m.find() ? m.group() : "0";
-    sb.append(reviewboardURL);
-    sb.append("r/").append(number).append('/');
+    return reviewNumberToUrl(number);
+  }
+
+  String reviewNumberToUrl(String number) {
+    StringBuilder sb = new StringBuilder();
+    sb.append(reviewboardURL).append("r/").append(number).append('/');
     return sb.toString();
   }
 
@@ -203,17 +205,15 @@ public class ReviewboardConnection {
     Collections.sort(list, Collections.reverseOrder());
     long period = periodInHours >= 0 ? periodInHours * HOUR : HOUR;
     final long coldThreshold = stringToDate(list.get(0).lastUpdated).getTime() - period;
-    Collection<ReviewItem> hot = Collections2.filter(list,
-      new Predicate<ReviewItem>(){
-        public boolean apply(ReviewItem input) {
-          return stringToDate(input.lastUpdated).getTime() >= coldThreshold; //check that the review is not too old
-        }
-      });
+    Collection<ReviewItem> hot = Collections2.filter(list, new Predicate<ReviewItem>(){
+      public boolean apply(ReviewItem input) {
+        return stringToDate(input.lastUpdated).getTime() >= coldThreshold; //check that the review is not too old
+      }
+    });
     Collection<ReviewItem> unhandled = Collections2.filter(hot, new NeedsBuild());
     Collection<String> res = Collections2.transform(unhandled, new Function<ReviewItem, String>() {
       public String apply(ReviewItem input) {
-        StringBuilder sb = new StringBuilder().append(reviewboardURL).append("r/").append(input.id).append('/');
-        return sb.toString();
+        return reviewNumberToUrl(Long.toString(input.id));
       }
     });
     return res;
@@ -308,7 +308,6 @@ public class ReviewboardConnection {
     List<ReviewItem> array;
   }
   public static class ReviewItem implements Comparable<ReviewItem> {
-
     @XmlElement(name = "last_updated")
     String lastUpdated;
     @XmlElement

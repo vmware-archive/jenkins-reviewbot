@@ -27,6 +27,7 @@ public class ConnectionTest {
   @Test
   public void testPending() throws Exception {
     int count = con.getPendingReviews(1).size();
+    System.out.println(count);
   }
 
   @Test
