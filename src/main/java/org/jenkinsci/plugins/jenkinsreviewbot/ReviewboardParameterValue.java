@@ -224,8 +224,9 @@ public class ReviewboardParameterValue extends ParameterValue {
       try {
         List<ContextualPatch.PatchReport> reports = patch.patch(false);
         for (ContextualPatch.PatchReport r : reports) {
-          if (r.getFailure()!=null)
-            throw new IOException("Failed to patch " + r.getFile(), r.getFailure());
+          Throwable failure = r.getFailure();
+          if (failure != null)
+            throw new IOException("Failed to patch " + r.getFile(), failure);
         }
       } catch (PatchException e) {
         throw new IOException2("Failed to apply the patch: "+diff,e);

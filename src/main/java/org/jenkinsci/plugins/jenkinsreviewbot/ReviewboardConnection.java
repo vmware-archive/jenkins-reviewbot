@@ -37,6 +37,8 @@ import javax.xml.bind.JAXBContext;
 import javax.xml.bind.JAXBException;
 import javax.xml.bind.Unmarshaller;
 import javax.xml.bind.annotation.*;
+import javax.xml.bind.annotation.adapters.XmlAdapter;
+import javax.xml.bind.annotation.adapters.XmlJavaTypeAdapter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -52,7 +54,6 @@ import java.util.regex.Pattern;
  */
 public class ReviewboardConnection {
 
-  private static final SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
   private static final long HOUR = 60 * 60 * 1000;
 
   private final HttpClient http;
@@ -110,7 +111,7 @@ public class ReviewboardConnection {
 
   private int ensureAuthentication(boolean withRetry) throws IOException {
     try {
-      GetMethod url = new GetMethod(reviewboardURL + "api/session");
+      GetMethod url = new GetMethod(reviewboardURL + "api/"); //suspicion that session does not always exist
       url.setDoAuthentication(true);
       return http.executeMethod(url);
     } catch (IOException e) {
@@ -201,13 +202,13 @@ public class ReviewboardConnection {
     ensureAuthentication();
     ReviewsResponse response = unmarshalResponse(getRequestsUrl(), ReviewsResponse.class);
     List<ReviewItem> list = response.requests.array;
-    if (list == null || list.isEmpty()) return Collections.EMPTY_LIST;
+    if (list == null || list.isEmpty()) return Collections.emptyList();
     Collections.sort(list, Collections.reverseOrder());
     long period = periodInHours >= 0 ? periodInHours * HOUR : HOUR;
-    final long coldThreshold = stringToDate(list.get(0).lastUpdated).getTime() - period;
+    final long coldThreshold = list.get(0).lastUpdated.getTime() - period;
     Collection<ReviewItem> hot = Collections2.filter(list, new Predicate<ReviewItem>(){
       public boolean apply(ReviewItem input) {
-        return stringToDate(input.lastUpdated).getTime() >= coldThreshold; //check that the review is not too old
+        return input.lastUpdated.getTime() >= coldThreshold; //check that the review is not too old
       }
     });
     Collection<ReviewItem> unhandled = Collections2.filter(hot, new NeedsBuild());
@@ -217,14 +218,6 @@ public class ReviewboardConnection {
       }
     });
     return res;
-  }
-
-  private static Date stringToDate(String str) {
-    try {
-      return formatter.parse(str);
-    } catch (ParseException e) {
-      throw new RuntimeException(e);
-    }
   }
 
   private InputStream getXmlContent(String requestsUrl) throws IOException {
@@ -275,12 +268,12 @@ public class ReviewboardConnection {
     public boolean apply(ReviewItem input) {
       Response d = unmarshalResponse(getDiffsUrl(input.id), Response.class);
       if (d.count < 1) return false; //no diffs found
-      Date lastUploadTime = stringToDate(d.diffs.array.get(d.count - 1).timestamp);
+      Date lastUploadTime = d.diffs.array.get(d.count - 1).timestamp;
       Response c = unmarshalResponse(getCommentsUrl(input.id), Response.class);
       //no comments from this user after last diff upload
       for (Item r : c.reviews.array) {
         if (reviewboardUsername.equals(r.links.user.title) &&
-            stringToDate(r.timestamp).after(lastUploadTime)) {
+            r.timestamp.after(lastUploadTime)) {
           return false;
         }
       }
@@ -308,8 +301,9 @@ public class ReviewboardConnection {
     List<ReviewItem> array;
   }
   public static class ReviewItem implements Comparable<ReviewItem> {
+    @XmlJavaTypeAdapter(MyDateAdapter.class)
     @XmlElement(name = "last_updated")
-    String lastUpdated;
+    Date lastUpdated;
     @XmlElement
     String branch;
     @XmlElement
@@ -317,7 +311,7 @@ public class ReviewboardConnection {
 
     public int compareTo(ReviewItem o) {
       try {
-        return stringToDate(lastUpdated).compareTo(stringToDate(o.lastUpdated));
+        return lastUpdated.compareTo(o.lastUpdated);
       } catch (Exception e) {
         return -1;
       }
@@ -338,8 +332,9 @@ public class ReviewboardConnection {
     List<Item> array;
   }
   public static class Item {
+    @XmlJavaTypeAdapter(MyDateAdapter.class)
     @XmlElement
-    String timestamp;
+    Date timestamp;
     @XmlElement
     Links links;
   }
@@ -350,6 +345,32 @@ public class ReviewboardConnection {
   public static class User {
     @XmlElement
     String title;
+  }
+
+  public static class MyDateAdapter extends XmlAdapter<String, Date> {
+    private static final SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+
+    @Override
+    public Date unmarshal(String v) throws Exception {
+      try {
+        return javax.xml.bind.DatatypeConverter.parseDateTime(v).getTime();
+      } catch (IllegalArgumentException iae) { //to support Reviewboard version 1.6
+        try {
+          return formatter.parse(v);
+        } catch (ParseException e) {
+          throw new RuntimeException(e);
+        }
+      }
+    }
+
+    @Override
+    public String marshal(Date v) throws Exception { //isn't really used
+      Calendar c = GregorianCalendar.getInstance();
+      c.setTime(v);
+      return javax.xml.bind.DatatypeConverter.printDateTime(c);
+//      return formatter.format(v);
+    }
+
   }
 
 }
