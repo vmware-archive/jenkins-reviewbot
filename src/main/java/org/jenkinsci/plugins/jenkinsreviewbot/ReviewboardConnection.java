@@ -81,6 +81,7 @@ public class ReviewboardConnection {
 
   public boolean logout() {
     PostMethod post = new PostMethod(reviewboardURL + "api/json/accounts/logout/");
+    post.setDoAuthentication(true);
     try {
       int response = http.executeMethod(post);
       return response == 200;
@@ -133,6 +134,7 @@ public class ReviewboardConnection {
     if (d.count < 1) throw new RuntimeException("Review " + url + " has no diffs");
 //    String diffUrl = url.concat("diff/raw/");
     GetMethod diff = new GetMethod(diffUrl + d.count + "/");
+    diff.setDoAuthentication(true);
     diff.setRequestHeader("Accept", "text/x-patch");
     http.executeMethod(diff);
     return diff;
@@ -154,6 +156,7 @@ public class ReviewboardConnection {
     ensureAuthentication();
     String postUrl = buildApiUrl(url, "reviews");
     PostMethod post = new PostMethod(postUrl);
+    post.setDoAuthentication(true);
     NameValuePair[] data = {
         new NameValuePair("body_top", msg),
         new NameValuePair("public", "true"),
@@ -222,6 +225,7 @@ public class ReviewboardConnection {
 
   private InputStream getXmlContent(String requestsUrl) throws IOException {
     GetMethod requests = new GetMethod(requestsUrl);
+    requests.setDoAuthentication(true);
     requests.setRequestHeader("Accept", "application/xml");
     http.executeMethod(requests);
     return requests.getResponseBodyAsStream();
