@@ -73,8 +73,8 @@ public class ReviewboardConnection {
   }
 
   private void initializeAuthentication() {
-    String host = extractHost(reviewboardURL);
-    http.getState().setCredentials(new AuthScope(host, 443, "Web API"),
+    Host host = extractHostAndPort(reviewboardURL);
+    http.getState().setCredentials(new AuthScope(host.host, host.port, AuthScope.ANY_REALM),
         new UsernamePasswordCredentials(reviewboardUsername, reviewboardPassword));
     http.getParams().setAuthenticationPreemptive(true);
   }
@@ -95,14 +95,29 @@ public class ReviewboardConnection {
     ((SimpleHttpConnectionManager)http.getHttpConnectionManager()).shutdown();
   }
 
-  String extractHost(String url) {
+  static class Host {
+    final String host;
+    final int port;
+    Host(String host, int port) { this.host = host; this.port = port; }
+  }
+
+  static Host extractHostAndPort(String url) {
     // e.g. 'https://reviewboard.eng.vmware.com/' -> 'reviewboard.eng.vmware.com'
     int startIndex = 0;
     int temp = url.indexOf("://");
     if (temp >= 0) startIndex = temp + 3;
     int endIndex = url.indexOf('/', startIndex);
     if (endIndex < 0) endIndex = url.length();
-    return url.substring(startIndex, endIndex);
+    String hostAndPort = url.substring(startIndex, endIndex);
+
+    int colon = hostAndPort.indexOf(':');
+    String host = colon >= 0 ? hostAndPort.substring(0, colon) : hostAndPort;
+    int port = colon >= 0 ?
+        Integer.parseInt(hostAndPort.substring(colon + 1)) :
+        url.startsWith("http:") ? 80 :
+        url.startsWith("https:") ? 443 :
+        AuthScope.ANY_PORT;
+    return new Host(host, port);
   }
 
   public void ensureAuthentication()  throws IOException {
