@@ -67,7 +67,13 @@ public class ReviewboardNotifier extends Notifier implements MatrixAggregatable 
   private boolean notifyReviewboard(BuildListener listener, AbstractBuild<?, ?> build) {
     listener.getLogger().println("Going to notify reviewboard about " + build.getDisplayName());
     ParametersAction paramAction = build.getAction(ParametersAction.class);
-    ReviewboardParameterValue rbParam = (ReviewboardParameterValue)paramAction.getParameter("review.url");
+    ParameterValue param = paramAction.getParameter("review.url");
+    ReviewboardParameterValue rbParam =
+      param instanceof ReviewboardParameterValue ? (ReviewboardParameterValue)param :
+      //for backwards compatibility
+      param instanceof StringParameterValue ? ReviewboardParameterValue.wrap((StringParameterValue)param) :
+      null;
+    if (rbParam == null) throw new UnsupportedOperationException("review.url parameter is null or invalid");
     String url = rbParam.getLocation();
     Result result = build.getResult();
     try {

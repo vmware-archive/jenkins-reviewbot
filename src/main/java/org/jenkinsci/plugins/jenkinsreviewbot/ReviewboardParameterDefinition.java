@@ -51,25 +51,12 @@ public class ReviewboardParameterDefinition extends StringParameterDefinition {
   }
 
   public ParameterValue createValue(String value) {
-    return wrap((StringParameterValue) super.createValue(value));
+    return ReviewboardParameterValue.wrap((StringParameterValue) super.createValue(value));
   }
 
   @Override
   public ReviewboardParameterValue createValue(StaplerRequest req, JSONObject jo) {
-    return wrap((StringParameterValue) super.createValue(req, jo));
-  }
-
-  private ReviewboardParameterValue wrap(StringParameterValue rhs) {
-    try {
-      Field $value = StringParameterValue.class.getDeclaredField("value");
-      $value.setAccessible(true);
-      ReviewboardParameterValue v = new ReviewboardParameterValue(rhs.getName(), (String)$value.get(rhs));
-      return v;
-    } catch (NoSuchFieldException e) {
-      throw new Error(e);
-    } catch (IllegalAccessException e) {
-      throw new Error(e);
-    }
+    return ReviewboardParameterValue.wrap((StringParameterValue) super.createValue(req, jo));
   }
 
   @Extension

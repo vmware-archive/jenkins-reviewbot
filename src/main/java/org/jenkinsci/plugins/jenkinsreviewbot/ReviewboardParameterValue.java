@@ -30,6 +30,7 @@ import hudson.Launcher;
 import hudson.model.AbstractBuild;
 import hudson.model.BuildListener;
 import hudson.model.ParameterValue;
+import hudson.model.StringParameterValue;
 import hudson.remoting.VirtualChannel;
 import hudson.tasks.BuildWrapper;
 import hudson.util.IOException2;
@@ -38,6 +39,7 @@ import org.apache.commons.lang.StringUtils;
 import org.kohsuke.stapler.DataBoundConstructor;
 
 import java.io.*;
+import java.lang.reflect.Field;
 import java.util.List;
 
 /**
@@ -55,6 +57,21 @@ public class ReviewboardParameterValue extends ParameterValue {
     super("review.url");
     url = buildReviewUrl(value);
   }
+
+  static ReviewboardParameterValue wrap(StringParameterValue rhs) {
+    try {
+      Field $value = StringParameterValue.class.getDeclaredField("value");
+      $value.setAccessible(true);
+      ReviewboardParameterValue v = new ReviewboardParameterValue(rhs.getName(), (String)$value.get(rhs));
+      return v;
+    } catch (NoSuchFieldException e) {
+      throw new Error(e);
+    } catch (IllegalAccessException e) {
+      throw new Error(e);
+    }
+  }
+
+
 
   public String getLocation() {
     return url;
