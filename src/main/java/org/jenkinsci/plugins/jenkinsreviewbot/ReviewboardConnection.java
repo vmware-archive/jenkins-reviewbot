@@ -209,10 +209,15 @@ public class ReviewboardConnection {
     return sb.toString();
   }
 
-  String getBranch(String url) throws IOException {
+  ReviewItem getReviewItem(String url) throws IOException {
     ensureAuthentication();
     ReviewRequest response = unmarshalResponse(buildApiUrl(url, ""), ReviewRequest.class);
-    String branch = response.request.branch;
+    return response.request;
+  }
+
+  String getBranch(String url) throws IOException {
+    ReviewItem review = getReviewItem(url);
+    String branch = review.branch;
     return branch == null || branch.isEmpty() ? "master" : branch;
   }
 
@@ -327,6 +332,8 @@ public class ReviewboardConnection {
     String branch;
     @XmlElement
     long id;
+    @XmlElement
+    Links links;
 
     public int compareTo(ReviewItem o) {
       try {
@@ -360,8 +367,14 @@ public class ReviewboardConnection {
   public static class Links {
     @XmlElement
     User user;
+    @XmlElement
+    Repository repository;
   }
   public static class User {
+    @XmlElement
+    String title;
+  }
+  public static class Repository {
     @XmlElement
     String title;
   }
