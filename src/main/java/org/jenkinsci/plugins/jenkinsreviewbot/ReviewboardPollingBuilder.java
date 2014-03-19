@@ -37,13 +37,13 @@ import java.util.Collection;
  * User: ymeymann
  * Date: 9/3/13 1:12 AM
  */
-public class RevieboardPollingBuilder extends Builder {
+public class ReviewboardPollingBuilder extends Builder {
 
   private final String reviewbotJobName;
   private final String checkBackPeriod;
 
   @DataBoundConstructor
-  public RevieboardPollingBuilder(String reviewbotJobName, String checkBackPeriod) {
+  public ReviewboardPollingBuilder(String reviewbotJobName, String checkBackPeriod) {
     this.reviewbotJobName = reviewbotJobName;
     this.checkBackPeriod = checkBackPeriod;
   }
