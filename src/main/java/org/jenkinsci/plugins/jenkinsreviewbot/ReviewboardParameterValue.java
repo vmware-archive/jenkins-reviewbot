@@ -24,6 +24,7 @@ package org.jenkinsci.plugins.jenkinsreviewbot;
 
 import com.cloudbees.diff.ContextualPatch;
 import com.cloudbees.diff.PatchException;
+
 import hudson.EnvVars;
 import hudson.FilePath;
 import hudson.Launcher;
@@ -35,6 +36,7 @@ import hudson.remoting.VirtualChannel;
 import hudson.tasks.BuildWrapper;
 import hudson.util.IOException2;
 import hudson.util.VariableResolver;
+
 import org.apache.commons.lang.StringUtils;
 import org.kohsuke.stapler.DataBoundConstructor;
 
@@ -192,12 +194,16 @@ public class ReviewboardParameterValue extends ParameterValue {
   public void buildEnvVars(AbstractBuild<?,?> build, EnvVars env) {
     env.put("REVIEW_URL",url);
     String branch = "master";
+    String repository = "";
     try {
-      branch = getConnection().getBranch(url);
+      ReviewboardConnection.ReviewItem review = getConnection().getReviewItem(url);
+      branch = review.branch;
+      repository = review.links.repository.title;
     } catch (IOException e) {
       e.printStackTrace();
     }
     env.put("REVIEW_BRANCH", branch);
+    env.put("REVIEW_REPOSITORY", repository);
   }
 
 //  copied from FileParameterValue
