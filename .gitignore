@@ -9,3 +9,6 @@ target
 work
 *.diff
 *.patch
+.externalToolBuilders/
+.metadata/
+Servers/

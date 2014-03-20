@@ -127,7 +127,7 @@ public class ReviewboardConnection {
 
   private int ensureAuthentication(boolean withRetry) throws IOException {
     try {
-      GetMethod url = new GetMethod(reviewboardURL + "api/"); //suspicion that session does not always exist
+      GetMethod url = new GetMethod(reviewboardURL + "api/session/");
       url.setDoAuthentication(true);
       return http.executeMethod(url);
     } catch (IOException e) {
@@ -209,16 +209,21 @@ public class ReviewboardConnection {
     return sb.toString();
   }
 
-  String getBranch(String url) throws IOException {
+  ReviewItem getReviewItem(String url) throws IOException {
     ensureAuthentication();
     ReviewRequest response = unmarshalResponse(buildApiUrl(url, ""), ReviewRequest.class);
-    String branch = response.request.branch;
+    return response.request;
+  }
+
+  String getBranch(String url) throws IOException {
+    ReviewItem review = getReviewItem(url);
+    String branch = review.branch;
     return branch == null || branch.isEmpty() ? "master" : branch;
   }
 
-  Collection<String> getPendingReviews(long periodInHours) throws IOException, JAXBException, ParseException {
+  Collection<String> getPendingReviews(int repoid, long periodInHours) throws IOException, JAXBException, ParseException {
     ensureAuthentication();
-    ReviewsResponse response = unmarshalResponse(getRequestsUrl(), ReviewsResponse.class);
+    ReviewsResponse response = unmarshalResponse(getRequestsUrl(repoid), ReviewsResponse.class);
     List<ReviewItem> list = response.requests.array;
     if (list == null || list.isEmpty()) return Collections.emptyList();
     Collections.sort(list, Collections.reverseOrder());
@@ -238,6 +243,17 @@ public class ReviewboardConnection {
     return res;
   }
 
+  Map<String, Item> getRepositories() throws IOException, JAXBException, ParseException {
+    ensureAuthentication();
+    Response response = unmarshalResponse(getRepositoriesUrl(), Response.class);
+    if (response.count < 1) return null;
+    Map map = new HashMap();
+    for (Item i: response.repositories.array) {
+      map.put(i.name, i);
+    }
+    return map;
+  }
+
   private InputStream getXmlContent(String requestsUrl) throws IOException {
     GetMethod requests = new GetMethod(requestsUrl);
     requests.setDoAuthentication(true);
@@ -246,13 +262,25 @@ public class ReviewboardConnection {
     return requests.getResponseBodyAsStream();
   }
 
-  private String getRequestsUrl() {
+  private String getRequestsUrl(int repoid) {
     //e.g. https://reviewboard.eng.vmware.com/api/review-requests/?to-users=...
     StringBuilder sb = new StringBuilder(128);
     sb.append(reviewboardURL).append("api/review-requests/");
     sb.append('?').append("to-users=").append(reviewboardUsername);
     sb.append('&').append("status=pending");
     sb.append('&').append("max-results=200");
+    if (repoid >= 0) {
+      // user selected to filter by repository
+      // rationale is that different repository means different test job.
+      sb.append('&').append("repository=" + repoid);
+    }
+    return sb.toString();
+  }
+
+  private String getRepositoriesUrl() {
+    // e.g. http://reviews.example.com/api/repositories/
+    StringBuilder sb = new StringBuilder(128);
+    sb.append(reviewboardURL).append("api/repositories/");
     return sb.toString();
   }
 
@@ -327,6 +355,8 @@ public class ReviewboardConnection {
     String branch;
     @XmlElement
     long id;
+    @XmlElement
+    Links links;
 
     public int compareTo(ReviewItem o) {
       try {
@@ -341,9 +371,13 @@ public class ReviewboardConnection {
     @XmlElement(name = "total_results")
     int count;
     @XmlElement
+    String stat;
+    @XmlElement
     Items diffs;
     @XmlElement
     Items reviews;
+    @XmlElement
+    Items repositories;
   }
   public static class Items {
     @XmlElementWrapper
@@ -356,12 +390,27 @@ public class ReviewboardConnection {
     Date timestamp;
     @XmlElement
     Links links;
+    // these are for repositories
+    @XmlElement
+    int id;
+    @XmlElement
+    String name;
+    @XmlElement
+    String tool;
+    @XmlElement
+    String path;
   }
   public static class Links {
     @XmlElement
     User user;
+    @XmlElement
+    Repository repository;
   }
   public static class User {
+    @XmlElement
+    String title;
+  }
+  public static class Repository {
     @XmlElement
     String title;
   }

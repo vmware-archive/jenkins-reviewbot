@@ -31,21 +31,29 @@ import hudson.util.ListBoxModel;
 import jenkins.model.Jenkins;
 import org.kohsuke.stapler.DataBoundConstructor;
 
+import java.util.*;
+import java.lang.Integer;
 import java.util.Collection;
 
 /**
  * User: ymeymann
  * Date: 9/3/13 1:12 AM
  */
-public class RevieboardPollingBuilder extends Builder {
+public class ReviewboardPollingBuilder extends Builder {
 
+  private final int reviewbotRepoId;
   private final String reviewbotJobName;
   private final String checkBackPeriod;
 
   @DataBoundConstructor
-  public RevieboardPollingBuilder(String reviewbotJobName, String checkBackPeriod) {
+  public ReviewboardPollingBuilder(String reviewbotRepoId, String reviewbotJobName, String checkBackPeriod) {
+    this.reviewbotRepoId = Integer.parseInt(reviewbotRepoId);
     this.reviewbotJobName = reviewbotJobName;
     this.checkBackPeriod = checkBackPeriod;
+  }
+
+  public int getReviewbotRepoId() {
+    return reviewbotRepoId;
   }
 
   public String getReviewbotJobName() {
@@ -65,7 +73,7 @@ public class RevieboardPollingBuilder extends Builder {
     ReviewboardConnection con = new ReviewboardConnection(d.getReviewboardURL(),
                                                           d.getReviewboardUsername(), d.getReviewboardPassword());
     try {
-      Collection<String> reviews = con.getPendingReviews(period);
+      Collection<String> reviews = con.getPendingReviews(reviewbotRepoId, period);
       listener.getLogger().println("Got " + reviews.size() + " reviews");
       if (reviews.isEmpty()) return true;
       Cause cause = new Cause.UpstreamCause(build); //TODO not sure what should be put here
@@ -110,6 +118,32 @@ public class RevieboardPollingBuilder extends Builder {
     @Override
     public boolean isApplicable(Class type) {
       return true;
+    }
+
+    public ListBoxModel doFillReviewbotRepoIdItems() {
+      // populate list of repositories with (name, id)
+      ReviewboardDescriptor d = ReviewboardNotifier.DESCRIPTOR;
+      ReviewboardConnection con = new ReviewboardConnection(d.getReviewboardURL(),
+                                                            d.getReviewboardUsername(), d.getReviewboardPassword());
+      ListBoxModel items = new ListBoxModel();
+      // select option to allow polling requests for all repositories
+      items.add("All repositories", "-1");
+      // select options to filter by repository id.
+      try {
+        Map<String, ReviewboardConnection.Item> repos = con.getRepositories();
+        // sort repositories by name
+        SortedSet<String> keys = new TreeSet<String>(repos.keySet());
+        for (String key : keys) {
+          Integer value = repos.get(key).id;
+          items.add(key, value.toString());
+        }
+        return items;
+      } catch (Exception e) {
+        // how do we log this?
+        return items;
+      } finally {
+        if (con != null) con.close();
+      }
     }
 
     public ListBoxModel doFillReviewbotJobNameItems() {
