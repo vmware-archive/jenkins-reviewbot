@@ -40,7 +40,9 @@ import org.kohsuke.stapler.DataBoundConstructor;
 
 import java.io.*;
 import java.lang.reflect.Field;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 /**
  * User: ymeymann
@@ -191,13 +193,15 @@ public class ReviewboardParameterValue extends ParameterValue {
   @Override
   public void buildEnvVars(AbstractBuild<?,?> build, EnvVars env) {
     env.put("REVIEW_URL",url);
-    String branch = "master";
+//    String branch = "master";
+    Map<String, String> props = Collections.emptyMap();
     try {
-      branch = getConnection().getBranch(url);
+      props = getConnection().getProperties(url);
     } catch (IOException e) {
       e.printStackTrace();
     }
-    env.put("REVIEW_BRANCH", branch);
+    env.putAll(props);
+//    env.put("REVIEW_BRANCH", branch);
   }
 
 //  copied from FileParameterValue

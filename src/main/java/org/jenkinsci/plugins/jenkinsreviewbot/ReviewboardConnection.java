@@ -127,9 +127,10 @@ public class ReviewboardConnection {
 
   private int ensureAuthentication(boolean withRetry) throws IOException {
     try {
-      GetMethod url = new GetMethod(reviewboardURL + "api/"); //suspicion that session does not always exist
+      GetMethod url = new GetMethod(reviewboardURL + "api/session/");
       url.setDoAuthentication(true);
-      return http.executeMethod(url);
+      int res = http.executeMethod(url);
+      return res;
     } catch (IOException e) {
       //trying to recover from failure...
       if (withRetry) return retryAuthentication(); else throw e;
@@ -209,11 +210,15 @@ public class ReviewboardConnection {
     return sb.toString();
   }
 
-  String getBranch(String url) throws IOException {
+  Map<String,String> getProperties(String url) throws IOException {
     ensureAuthentication();
     ReviewRequest response = unmarshalResponse(buildApiUrl(url, ""), ReviewRequest.class);
     String branch = response.request.branch;
-    return branch == null || branch.isEmpty() ? "master" : branch;
+    Map<String,String> m = new HashMap<String,String>();
+    m.put("REVIEW_BRANCH", branch == null || branch.isEmpty() ? "master" : branch);
+    String repo = response.request.links.repository.title;
+    m.put("REVIEW_REPOSITORY", repo == null || repo.isEmpty() ? "unknown" : repo);
+    return m;
   }
 
   Collection<String> getPendingReviews(long periodInHours) throws IOException, JAXBException, ParseException {
@@ -327,6 +332,8 @@ public class ReviewboardConnection {
     String branch;
     @XmlElement
     long id;
+    @XmlElement
+    Links links;
 
     public int compareTo(ReviewItem o) {
       try {
@@ -360,6 +367,12 @@ public class ReviewboardConnection {
   public static class Links {
     @XmlElement
     User user;
+    @XmlElement
+    Repository repository;
+  }
+  public static class Repository {
+    @XmlElement
+    String title;
   }
   public static class User {
     @XmlElement
