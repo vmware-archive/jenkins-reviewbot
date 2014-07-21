@@ -221,10 +221,10 @@ public class ReviewboardConnection {
     return m;
   }
 
-  Collection<String> getPendingReviews(int repoid, long periodInHours, boolean restrictByUser)
+  Collection<String> getPendingReviews(long periodInHours, boolean restrictByUser, int repoid)
       throws IOException, JAXBException, ParseException {
     ensureAuthentication();
-    ReviewsResponse response = unmarshalResponse(getPendingReviewsUrl(repoid, restrictByUser), ReviewsResponse.class);
+    ReviewsResponse response = unmarshalResponse(getPendingReviewsUrl(restrictByUser, repoid), ReviewsResponse.class);
     List<ReviewItem> list = response.requests.array;
     if (list == null || list.isEmpty()) return Collections.emptyList();
     Collections.sort(list, Collections.reverseOrder());
@@ -252,7 +252,7 @@ public class ReviewboardConnection {
     return requests.getResponseBodyAsStream();
   }
 
-  private String getPendingReviewsUrl(int repoid, boolean onlyToJenkinsUser) {
+  String getPendingReviewsUrl(boolean onlyToJenkinsUser, int repoid) {
     //e.g. https://reviewboard.eng.vmware.com/api/review-requests/?to-users=...
     StringBuilder sb = new StringBuilder(128);
     sb.append(reviewboardURL).append("api/review-requests/");

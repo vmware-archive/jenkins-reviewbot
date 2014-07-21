@@ -71,12 +71,13 @@ public class ReviewboardPollingBuilder extends Builder {
   public boolean perform(AbstractBuild build, Launcher launcher, BuildListener listener) {
     listener.getLogger().println("Looking for reviews that need building...");
     long period = checkBackPeriod != null && !checkBackPeriod.isEmpty() ? Long.parseLong(checkBackPeriod) : 1L;
-    listener.getLogger().println("Going to check reviews updated during last " + period + " hour(s)");
+    listener.getLogger().println("Going to check reviews updated during last " + period + " hour(s): ");
     ReviewboardDescriptor d = ReviewboardNotifier.DESCRIPTOR;
     ReviewboardConnection con = new ReviewboardConnection(d.getReviewboardURL(),
                                                           d.getReviewboardUsername(), d.getReviewboardPassword());
     try {
-      Collection<String> reviews = con.getPendingReviews(reviewbotRepoId, period, restrictByUser);
+      listener.getLogger().println("Query: " + con.getPendingReviewsUrl(restrictByUser, reviewbotRepoId));
+      Collection<String> reviews = con.getPendingReviews(period, restrictByUser, reviewbotRepoId);
       listener.getLogger().println("Got " + reviews.size() + " reviews");
       if (reviews.isEmpty()) return true;
       Cause cause = new Cause.UpstreamCause((Run<?,?>)build); //TODO not sure what should be put here
@@ -151,13 +152,6 @@ public class ReviewboardPollingBuilder extends Builder {
       for (Map.Entry<String, Integer> e: repositories.entrySet()) {
         items.add(e.getKey(), e.getValue().toString());
       }
-      // sort repositories by name
-//      SortedSet<String> keys = new TreeSet<String>(String.CASE_INSENSITIVE_ORDER);
-//      keys.addAll(repositories.keySet());
-//      for (String key : keys) {
-//        Integer value = repositories.get(key);
-//        items.add(key, value.toString());
-//      }
       return items;
     }
 
