@@ -221,9 +221,10 @@ public class ReviewboardConnection {
     return m;
   }
 
-  Collection<String> getPendingReviews(long periodInHours) throws IOException, JAXBException, ParseException {
+  Collection<String> getPendingReviews(int repoid, long periodInHours, boolean restrictByUser)
+      throws IOException, JAXBException, ParseException {
     ensureAuthentication();
-    ReviewsResponse response = unmarshalResponse(getRequestsUrl(), ReviewsResponse.class);
+    ReviewsResponse response = unmarshalResponse(getPendingReviewsUrl(repoid, restrictByUser), ReviewsResponse.class);
     List<ReviewItem> list = response.requests.array;
     if (list == null || list.isEmpty()) return Collections.emptyList();
     Collections.sort(list, Collections.reverseOrder());
@@ -251,14 +252,43 @@ public class ReviewboardConnection {
     return requests.getResponseBodyAsStream();
   }
 
-  private String getRequestsUrl() {
+  private String getPendingReviewsUrl(int repoid, boolean onlyToJenkinsUser) {
     //e.g. https://reviewboard.eng.vmware.com/api/review-requests/?to-users=...
     StringBuilder sb = new StringBuilder(128);
     sb.append(reviewboardURL).append("api/review-requests/");
-    sb.append('?').append("to-users=").append(reviewboardUsername);
-    sb.append('&').append("status=pending");
+    sb.append('?').append("status=pending");
+    if (onlyToJenkinsUser) sb.append('&').append("to-users=").append(reviewboardUsername);
     sb.append('&').append("max-results=200");
+    if (repoid >= 0) {
+      // user selected to filter by repository
+      // rationale is that different repository means different test job.
+      sb.append('&').append("repository=" + repoid);
+    }
     return sb.toString();
+  }
+
+  private String getRepositoriesUrl() {
+    // e.g. https://reviewboard.eng.vmware.com/api/repositories/
+    return reviewboardURL.concat("api/repositories/?max-results=200");
+  }
+
+  Map<String, Integer> getRepositories() throws IOException, JAXBException, ParseException {
+    ensureAuthentication();
+    return getRepositories(getRepositoriesUrl());
+  }
+
+  private SortedMap<String, Integer> getRepositories(String url) throws IOException, JAXBException, ParseException {
+    Response response = unmarshalResponse(url, Response.class);
+    SortedMap<String, Integer> map = new TreeMap<String, Integer>(String.CASE_INSENSITIVE_ORDER);
+    if (response.count > 0) {
+      for (Item i : response.repositories.array) {
+        map.put(i.name, i.id);
+      }
+      if (response.links.next != null) {
+        map.putAll(getRepositories(response.links.next.href));
+      }
+    }
+    return map;
   }
 
   private String getDiffsUrl(long id) {
@@ -351,6 +381,10 @@ public class ReviewboardConnection {
     Items diffs;
     @XmlElement
     Items reviews;
+    @XmlElement
+    Items repositories;
+    @XmlElement
+    Links links;
   }
   public static class Items {
     @XmlElementWrapper
@@ -363,12 +397,23 @@ public class ReviewboardConnection {
     Date timestamp;
     @XmlElement
     Links links;
+    // for repositories
+    @XmlElement
+    int id;
+    @XmlElement
+    String name;
+    @XmlElement
+    String tool;
+    @XmlElement
+    String path;
   }
   public static class Links {
     @XmlElement
     User user;
     @XmlElement
     Repository repository;
+    @XmlElement
+    Link next;
   }
   public static class Repository {
     @XmlElement
@@ -377,6 +422,10 @@ public class ReviewboardConnection {
   public static class User {
     @XmlElement
     String title;
+  }
+  public static class Link {
+    @XmlElement
+    String href;
   }
 
   public static class MyDateAdapter extends XmlAdapter<String, Date> {

@@ -31,7 +31,7 @@ import hudson.util.ListBoxModel;
 import jenkins.model.Jenkins;
 import org.kohsuke.stapler.DataBoundConstructor;
 
-import java.util.Collection;
+import java.util.*;
 
 /**
  * User: ymeymann
@@ -41,9 +41,14 @@ public class ReviewboardPollingBuilder extends Builder {
 
   private final String reviewbotJobName;
   private final String checkBackPeriod;
+  private final int reviewbotRepoId;
+  private final boolean restrictByUser;
 
   @DataBoundConstructor
-  public ReviewboardPollingBuilder(String reviewbotJobName, String checkBackPeriod) {
+  public ReviewboardPollingBuilder(String reviewbotJobName, String checkBackPeriod,
+                                   String reviewbotRepoId, boolean restrictByUser) {
+    this.reviewbotRepoId = reviewbotRepoId == null || reviewbotRepoId.isEmpty() ? -1 : Integer.parseInt(reviewbotRepoId);
+    this.restrictByUser = restrictByUser;
     this.reviewbotJobName = reviewbotJobName;
     this.checkBackPeriod = checkBackPeriod;
   }
@@ -56,6 +61,12 @@ public class ReviewboardPollingBuilder extends Builder {
     return checkBackPeriod;
   }
 
+  public int getReviewbotRepoId() { return reviewbotRepoId; }
+
+  public boolean isRestrictByUser() { return restrictByUser; }
+
+  public String getJenkinsUser() { return ReviewboardNotifier.DESCRIPTOR.getReviewboardUsername(); }
+
   @Override
   public boolean perform(AbstractBuild build, Launcher launcher, BuildListener listener) {
     listener.getLogger().println("Looking for reviews that need building...");
@@ -65,10 +76,10 @@ public class ReviewboardPollingBuilder extends Builder {
     ReviewboardConnection con = new ReviewboardConnection(d.getReviewboardURL(),
                                                           d.getReviewboardUsername(), d.getReviewboardPassword());
     try {
-      Collection<String> reviews = con.getPendingReviews(period);
+      Collection<String> reviews = con.getPendingReviews(reviewbotRepoId, period, restrictByUser);
       listener.getLogger().println("Got " + reviews.size() + " reviews");
       if (reviews.isEmpty()) return true;
-      Cause cause = new Cause.UpstreamCause(build); //TODO not sure what should be put here
+      Cause cause = new Cause.UpstreamCause((Run<?,?>)build); //TODO not sure what should be put here
       listener.getLogger().println("Setting cause to this build");
       Jenkins jenkins = Jenkins.getInstance();
       AbstractProject project = jenkins.getItem(reviewbotJobName, jenkins, AbstractProject.class);
@@ -100,8 +111,19 @@ public class ReviewboardPollingBuilder extends Builder {
 
   @Extension
   public static final class DescriptorImpl extends BuildStepDescriptor<Builder> {
+    private Map<String, Integer> repositories = Collections.emptyMap();
     public DescriptorImpl() {
       load();
+      ReviewboardDescriptor d = ReviewboardNotifier.DESCRIPTOR;
+      ReviewboardConnection con = new ReviewboardConnection(d.getReviewboardURL(), d.getReviewboardUsername(), d.getReviewboardPassword());
+      try {
+        repositories = con.getRepositories();
+      } catch (Exception e) {
+        // TODO how do we properly log this?
+        e.printStackTrace();
+      } finally {
+        if (con != null) con.close();
+      }
     }
     @Override
     public String getDisplayName() {
@@ -119,6 +141,26 @@ public class ReviewboardPollingBuilder extends Builder {
       }
       return items;
     }
+
+    public ListBoxModel doFillReviewbotRepoIdItems() {
+      // populate list of repositories with (name, id)
+      ListBoxModel items = new ListBoxModel();
+      // select option to allow polling requests for all repositories
+      items.add("-- any --", "-1");
+      // select options to filter by repository id.
+      for (Map.Entry<String, Integer> e: repositories.entrySet()) {
+        items.add(e.getKey(), e.getValue().toString());
+      }
+      // sort repositories by name
+//      SortedSet<String> keys = new TreeSet<String>(String.CASE_INSENSITIVE_ORDER);
+//      keys.addAll(repositories.keySet());
+//      for (String key : keys) {
+//        Integer value = repositories.get(key);
+//        items.add(key, value.toString());
+//      }
+      return items;
+    }
+
   }
 
 }
