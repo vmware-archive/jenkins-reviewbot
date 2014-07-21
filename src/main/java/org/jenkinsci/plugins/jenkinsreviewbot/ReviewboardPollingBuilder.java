@@ -24,6 +24,8 @@ package org.jenkinsci.plugins.jenkinsreviewbot;
 
 import hudson.Extension;
 import hudson.Launcher;
+import hudson.init.InitMilestone;
+import hudson.init.Initializer;
 import hudson.model.*;
 import hudson.tasks.BuildStepDescriptor;
 import hudson.tasks.Builder;
@@ -112,7 +114,9 @@ public class ReviewboardPollingBuilder extends Builder {
 
   @Extension
   public static final class DescriptorImpl extends BuildStepDescriptor<Builder> {
+
     private Map<String, Integer> repositories = Collections.emptyMap();
+
     public DescriptorImpl() {
       load();
       ReviewboardDescriptor d = ReviewboardNotifier.DESCRIPTOR;
@@ -126,10 +130,12 @@ public class ReviewboardPollingBuilder extends Builder {
         if (con != null) con.close();
       }
     }
+
     @Override
     public String getDisplayName() {
       return Messages.ReviewboardBuilder_DisplayName();
     }
+
     @Override
     public boolean isApplicable(Class type) {
       return true;
@@ -155,6 +161,11 @@ public class ReviewboardPollingBuilder extends Builder {
       return items;
     }
 
+    @Initializer(before= InitMilestone.PLUGINS_STARTED)
+    public static void addAliases() {
+      Items.XSTREAM2.addCompatibilityAlias(
+          "org.jenkinsci.plugins.jenkinsreviewbot.RevieboardPollingBuilder", ReviewboardPollingBuilder.class);
+    }
   }
 
 }
