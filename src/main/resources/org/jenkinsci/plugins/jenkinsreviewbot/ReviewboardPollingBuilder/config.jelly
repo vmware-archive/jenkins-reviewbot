@@ -2,7 +2,7 @@
     <f:entry title="Jenkins User" field="restrictByUser" description="Only consider reviews sent to Jenkins user, or to groups it is a member of">
       <f:checkbox default="true"/>
     </f:entry>
-    <f:entry title="Repository" field="reviewbotRepoId" description="Name of the repository to poll reviews for">
+    <f:entry title="Repository" field="reviewbotRepoId" description="Name of the repository to poll reviews for. Note that the list may take a few seconds to load.">
         <f:select default="-1"/>
     </f:entry>
     <f:entry title="Job Name" field="reviewbotJobName" description="Name of the job to run for each changed review">

@@ -44,13 +44,13 @@ public class ReviewboardPollingBuilder extends Builder {
   private final String reviewbotJobName;
   private final String checkBackPeriod;
   private final int reviewbotRepoId;
-  private final boolean anyUser;
+  private final boolean restrictByUser;
 
   @DataBoundConstructor
   public ReviewboardPollingBuilder(String reviewbotJobName, String checkBackPeriod,
                                    String reviewbotRepoId, boolean restrictByUser) {
     this.reviewbotRepoId = reviewbotRepoId == null || reviewbotRepoId.isEmpty() ? -1 : Integer.parseInt(reviewbotRepoId);
-    this.anyUser = !restrictByUser;
+    this.restrictByUser = restrictByUser;
     this.reviewbotJobName = reviewbotJobName;
     this.checkBackPeriod = checkBackPeriod;
   }
@@ -65,7 +65,7 @@ public class ReviewboardPollingBuilder extends Builder {
 
   public int getReviewbotRepoId() { return reviewbotRepoId; }
 
-  public boolean getRestrictByUser() { return !anyUser; }
+  public boolean getRestrictByUser() { return restrictByUser; }
 
   public String getJenkinsUser() { return ReviewboardNotifier.DESCRIPTOR.getReviewboardUsername(); }
 
@@ -78,8 +78,8 @@ public class ReviewboardPollingBuilder extends Builder {
     ReviewboardConnection con = new ReviewboardConnection(d.getReviewboardURL(),
                                                           d.getReviewboardUsername(), d.getReviewboardPassword());
     try {
-      listener.getLogger().println("Query: " + con.getPendingReviewsUrl(getRestrictByUser(), reviewbotRepoId));
-      Collection<String> reviews = con.getPendingReviews(period, getRestrictByUser(), reviewbotRepoId);
+      listener.getLogger().println("Query: " + con.getPendingReviewsUrl(restrictByUser, reviewbotRepoId));
+      Collection<String> reviews = con.getPendingReviews(period, restrictByUser, reviewbotRepoId);
       listener.getLogger().println("Got " + reviews.size() + " reviews");
       if (reviews.isEmpty()) return true;
       Cause cause = new Cause.UpstreamCause((Run<?,?>)build); //TODO not sure what should be put here
@@ -119,6 +119,9 @@ public class ReviewboardPollingBuilder extends Builder {
 
     public DescriptorImpl() {
       load();
+    }
+
+    private void loadRepositories() {
       ReviewboardDescriptor d = ReviewboardNotifier.DESCRIPTOR;
       ReviewboardConnection con = new ReviewboardConnection(d.getReviewboardURL(), d.getReviewboardUsername(), d.getReviewboardPassword());
       try {
@@ -154,6 +157,8 @@ public class ReviewboardPollingBuilder extends Builder {
       ListBoxModel items = new ListBoxModel();
       // select option to allow polling requests for all repositories
       items.add("-- any --", "-1");
+      //if no repositories - try to load them again
+      if (repositories.isEmpty()) loadRepositories();
       // select options to filter by repository id.
       for (Map.Entry<String, Integer> e: repositories.entrySet()) {
         items.add(e.getKey(), e.getValue().toString());
