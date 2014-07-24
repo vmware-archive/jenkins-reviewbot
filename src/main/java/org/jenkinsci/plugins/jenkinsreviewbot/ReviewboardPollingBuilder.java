@@ -44,7 +44,7 @@ public class ReviewboardPollingBuilder extends Builder {
   private final String reviewbotJobName;
   private final String checkBackPeriod;
   private final int reviewbotRepoId;
-  private final boolean restrictByUser;
+  private boolean restrictByUser = true;
 
   @DataBoundConstructor
   public ReviewboardPollingBuilder(String reviewbotJobName, String checkBackPeriod,
