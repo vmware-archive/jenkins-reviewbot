@@ -19,4 +19,4 @@ For more details see https://wiki.jenkins-ci.org/display/JENKINS/Jenkins-Reviewb
 
 Contributions
 ==============
-Contact me (ymeymann at vmware dot com) for contribution license agreement
+Please note that since this project belongs to VMware, I will not be able to merge pull requests unless you sign a contribution license agreement. Contact me (ymeymann at vmware dot com) for the CLA.
