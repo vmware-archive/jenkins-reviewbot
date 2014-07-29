@@ -19,4 +19,4 @@ For more details see https://wiki.jenkins-ci.org/display/JENKINS/Jenkins-Reviewb
 
 Contributions
 ==============
-Please note that since this project belongs to VMware, I will not be able to merge pull requests unless you sign a contribution license agreement. Please return signed copy to ymeymann at vmware dot com.
+Please note that since this project belongs to VMware, I will not be able to merge pull requests unless you sign the [contribution license agreement](https://github.com/vmware/jenkins-reviewbot/blob/master/CLA.pdf). Please return signed copy to ymeymann at vmware dot com.
