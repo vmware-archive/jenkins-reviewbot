@@ -87,7 +87,9 @@ public class ReviewboardPollingBuilder extends Builder {
       Collection<String> reviews = con.getPendingReviews(period, restrictByUser, reviewbotRepoId);
       listener.getLogger().println("Got " + reviews.size() + " reviews");
       Set<String> unprocessedReviews = new HashSet<String>(reviews);
-      unprocessedReviews.removeAll(processedReviews);
+      if (processedReviews != null) { //apparently, it is null when de-serialized from previous version of plugin... DUH!
+        unprocessedReviews.removeAll(processedReviews);
+      }
       listener.getLogger().println("After removing previously processed, left with " + unprocessedReviews.size() + " reviews");
       if (unprocessedReviews.isEmpty()) return true;
       processedReviews = new HashSet<String>(reviews);
