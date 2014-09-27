@@ -45,14 +45,17 @@ public class ReviewboardPollingBuilder extends Builder {
   private final String checkBackPeriod;
   private final int reviewbotRepoId;
   private boolean restrictByUser = true;
+  private Set<String> processedReviews = new HashSet<String>();
+  private final boolean disableAdvanceNotice;
 
   @DataBoundConstructor
   public ReviewboardPollingBuilder(String reviewbotJobName, String checkBackPeriod,
-                                   String reviewbotRepoId, boolean restrictByUser) {
+                                   String reviewbotRepoId, boolean restrictByUser, boolean disableAdvanceNotice) {
     this.reviewbotRepoId = reviewbotRepoId == null || reviewbotRepoId.isEmpty() ? -1 : Integer.parseInt(reviewbotRepoId);
     this.restrictByUser = restrictByUser;
     this.reviewbotJobName = reviewbotJobName;
     this.checkBackPeriod = checkBackPeriod;
+    this.disableAdvanceNotice = disableAdvanceNotice;
   }
 
   public String getReviewbotJobName() {
@@ -66,6 +69,8 @@ public class ReviewboardPollingBuilder extends Builder {
   public int getReviewbotRepoId() { return reviewbotRepoId; }
 
   public boolean getRestrictByUser() { return restrictByUser; }
+
+  public boolean getDisableAdvanceNotice() { return disableAdvanceNotice; }
 
   public String getJenkinsUser() { return ReviewboardNotifier.DESCRIPTOR.getReviewboardUsername(); }
 
@@ -81,7 +86,11 @@ public class ReviewboardPollingBuilder extends Builder {
       listener.getLogger().println("Query: " + con.getPendingReviewsUrl(restrictByUser, reviewbotRepoId));
       Collection<String> reviews = con.getPendingReviews(period, restrictByUser, reviewbotRepoId);
       listener.getLogger().println("Got " + reviews.size() + " reviews");
-      if (reviews.isEmpty()) return true;
+      Set<String> unprocessedReviews = new HashSet<String>(reviews);
+      unprocessedReviews.removeAll(processedReviews);
+      listener.getLogger().println("After removing previously processed, left with " + unprocessedReviews.size() + " reviews");
+      if (unprocessedReviews.isEmpty()) return true;
+      processedReviews = new HashSet<String>(reviews);
       Cause cause = new Cause.UpstreamCause((Run<?,?>)build); //TODO not sure what should be put here
       listener.getLogger().println("Setting cause to this build");
       Jenkins jenkins = Jenkins.getInstance();
@@ -91,9 +100,9 @@ public class ReviewboardPollingBuilder extends Builder {
         return false;
       }
       listener.getLogger().println("Found job " + reviewbotJobName);
-      for (String review : reviews) {
+      for (String review : unprocessedReviews) {
         listener.getLogger().println(review);
-        con.postComment(review, Messages.ReviewboardPollingBuilder_Notice(), false);
+        if (!disableAdvanceNotice) con.postComment(review, Messages.ReviewboardPollingBuilder_Notice(), false);
         project.scheduleBuild2(project.getQuietPeriod(),
             cause,
             new ParametersAction(new ReviewboardParameterValue("review.url", review)));
