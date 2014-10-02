@@ -32,7 +32,9 @@ import org.apache.commons.httpclient.UsernamePasswordCredentials;
 import org.apache.commons.httpclient.auth.AuthScope;
 import org.apache.commons.httpclient.methods.GetMethod;
 import org.apache.commons.httpclient.methods.PostMethod;
+import org.jenkinsci.plugins.jenkinsreviewbot.util.Review;
 
+import javax.annotation.Nullable;
 import javax.xml.bind.JAXBContext;
 import javax.xml.bind.JAXBException;
 import javax.xml.bind.Unmarshaller;
@@ -221,7 +223,7 @@ public class ReviewboardConnection {
     return m;
   }
 
-  Collection<String> getPendingReviews(long periodInHours, boolean restrictByUser, int repoid)
+  Collection<Review.Slim> getPendingReviews(long periodInHours, boolean restrictByUser, int repoid)
       throws IOException, JAXBException, ParseException {
     ensureAuthentication();
     ReviewsResponse response = unmarshalResponse(getPendingReviewsUrl(restrictByUser, repoid), ReviewsResponse.class);
@@ -235,13 +237,34 @@ public class ReviewboardConnection {
         return input.lastUpdated.getTime() >= coldThreshold; //check that the review is not too old
       }
     });
-    Collection<ReviewItem> unhandled = Collections2.filter(hot, new NeedsBuild());
-    Collection<String> res = Collections2.transform(unhandled, new Function<ReviewItem, String>() {
-      public String apply(ReviewItem input) {
-        return reviewNumberToUrl(Long.toString(input.id));
+    Function<ReviewItem, Review> enrich = new Function<ReviewItem, Review>() {
+      public Review apply(@Nullable ReviewItem input) {
+        Response d = unmarshalResponse(getDiffsUrl(input.id), Response.class);
+        Date lastUploadTime = d.count < 1 ? null : d.diffs.array.get(d.count - 1).timestamp;
+        String url = reviewNumberToUrl(Long.toString(input.id));
+        return new Review(url, lastUploadTime, input);
       }
-    });
-    return res;
+    };
+    Collection<Review> hotRich = Collections2.transform(hot, enrich);
+    Predicate<Review> needsBuild = new Predicate<Review>() {
+      public boolean apply(Review input) {
+        if (input.getLastUpdate() == null) return false; //no diffs found
+        Response c = unmarshalResponse(getCommentsUrl(input.getInput().id), Response.class);
+        //no comments from this user after last diff upload
+        for (Item r : c.reviews.array) {
+          if (reviewboardUsername.equals(r.links.user.title) &&
+              r.timestamp.after(input.getLastUpdate())) {
+            return false;
+          }
+        }
+        return true;
+      }
+    };
+    Collection<Review> unhandled = Collections2.filter(hotRich, needsBuild);
+    Function<Review, Review.Slim> trim = new Function<Review, Review.Slim>() {
+      public Review.Slim apply(@Nullable Review input) { return input.trim(); }
+    };
+    return Collections2.transform(unhandled, trim);
   }
 
   private InputStream getXmlContent(String requestsUrl) throws IOException {
@@ -318,24 +341,7 @@ public class ReviewboardConnection {
     }
   }
 
-  private class NeedsBuild implements Predicate<ReviewItem> {
-    public boolean apply(ReviewItem input) {
-      Response d = unmarshalResponse(getDiffsUrl(input.id), Response.class);
-      if (d.count < 1) return false; //no diffs found
-      Date lastUploadTime = d.diffs.array.get(d.count - 1).timestamp;
-      Response c = unmarshalResponse(getCommentsUrl(input.id), Response.class);
-      //no comments from this user after last diff upload
-      for (Item r : c.reviews.array) {
-        if (reviewboardUsername.equals(r.links.user.title) &&
-            r.timestamp.after(lastUploadTime)) {
-          return false;
-        }
-      }
-      return true;
-    }
-  }
-
-  @XmlRootElement(name = "rsp")
+    @XmlRootElement(name = "rsp")
   public static class ReviewRequest {
     @XmlElement(name = "review_request")
     ReviewItem request;

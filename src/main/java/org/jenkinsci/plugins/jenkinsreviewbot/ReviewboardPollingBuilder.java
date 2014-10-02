@@ -22,6 +22,8 @@ IN THE SOFTWARE.
 
 package org.jenkinsci.plugins.jenkinsreviewbot;
 
+import com.google.common.base.Function;
+import com.google.common.collect.Collections2;
 import hudson.Extension;
 import hudson.Launcher;
 import hudson.init.InitMilestone;
@@ -31,8 +33,10 @@ import hudson.tasks.BuildStepDescriptor;
 import hudson.tasks.Builder;
 import hudson.util.ListBoxModel;
 import jenkins.model.Jenkins;
+import org.jenkinsci.plugins.jenkinsreviewbot.util.Review;
 import org.kohsuke.stapler.DataBoundConstructor;
 
+import javax.annotation.Nullable;
 import java.util.*;
 
 /**
@@ -47,6 +51,7 @@ public class ReviewboardPollingBuilder extends Builder {
   private boolean restrictByUser = true;
   private Set<String> processedReviews = new HashSet<String>();
   private final boolean disableAdvanceNotice;
+  private Map<String, Date> processedReviewDates = new HashMap<String, Date>();
 
   @DataBoundConstructor
   public ReviewboardPollingBuilder(String reviewbotJobName, String checkBackPeriod,
@@ -74,6 +79,26 @@ public class ReviewboardPollingBuilder extends Builder {
 
   public String getJenkinsUser() { return ReviewboardNotifier.DESCRIPTOR.getReviewboardUsername(); }
 
+  private Set<Review.Slim> getRichProcessedReviews() {
+    if (processedReviews == null) return Collections.emptySet();
+    HashSet<Review.Slim> res = new HashSet<Review.Slim>();
+    for (String r: processedReviews) {
+      res.add(new Review.Slim(r, processedReviewDates == null ? null : processedReviewDates.get(r)));
+    }
+    return res;
+  }
+
+  private void updateProcessed(Collection<Review.Slim> reviews) {
+    processedReviews = new HashSet<String>(Collections2.transform(reviews, new Function<Review.Slim, String>() {
+      public String apply(@Nullable Review.Slim input) { return input.getUrl(); }
+    }));
+    if (processedReviewDates == null) { processedReviewDates = new HashMap<String, Date>(); }
+    else { processedReviewDates.clear(); }
+    for (Review.Slim r: reviews) {
+      if (r.getLastUpdate() != null) processedReviewDates.put(r.getUrl(), r.getLastUpdate());
+    }
+  }
+
   @Override
   public boolean perform(AbstractBuild build, Launcher launcher, BuildListener listener) {
     listener.getLogger().println("Looking for reviews that need building...");
@@ -84,15 +109,16 @@ public class ReviewboardPollingBuilder extends Builder {
                                                           d.getReviewboardUsername(), d.getReviewboardPassword());
     try {
       listener.getLogger().println("Query: " + con.getPendingReviewsUrl(restrictByUser, reviewbotRepoId));
-      Collection<String> reviews = con.getPendingReviews(period, restrictByUser, reviewbotRepoId);
+      Collection<Review.Slim> reviews = con.getPendingReviews(period, restrictByUser, reviewbotRepoId);
       listener.getLogger().println("Got " + reviews.size() + " reviews");
-      Set<String> unprocessedReviews = new HashSet<String>(reviews);
+      Set<Review.Slim> unprocessedReviews = new HashSet<Review.Slim>(reviews);
       if (processedReviews != null) { //apparently, it is null when de-serialized from previous version of plugin... DUH!
-        unprocessedReviews.removeAll(processedReviews);
+        Set<Review.Slim> richProcessed = getRichProcessedReviews();
+        unprocessedReviews.removeAll(richProcessed);
       }
       listener.getLogger().println("After removing previously processed, left with " + unprocessedReviews.size() + " reviews");
+      updateProcessed(reviews);
       if (unprocessedReviews.isEmpty()) return true;
-      processedReviews = new HashSet<String>(reviews);
       Cause cause = new Cause.UpstreamCause((Run<?,?>)build); //TODO not sure what should be put here
       listener.getLogger().println("Setting cause to this build");
       Jenkins jenkins = Jenkins.getInstance();
@@ -102,12 +128,12 @@ public class ReviewboardPollingBuilder extends Builder {
         return false;
       }
       listener.getLogger().println("Found job " + reviewbotJobName);
-      for (String review : unprocessedReviews) {
-        listener.getLogger().println(review);
-        if (!disableAdvanceNotice) con.postComment(review, Messages.ReviewboardPollingBuilder_Notice(), false);
+      for (Review.Slim review : unprocessedReviews) {
+        listener.getLogger().println(review.getUrl());
+        if (!disableAdvanceNotice) con.postComment(review.getUrl(), Messages.ReviewboardPollingBuilder_Notice(), false);
         project.scheduleBuild2(project.getQuietPeriod(),
             cause,
-            new ParametersAction(new ReviewboardParameterValue("review.url", review)));
+            new ParametersAction(new ReviewboardParameterValue("review.url", review.getUrl())));
       }
       return true;
     } catch (Exception e) {
