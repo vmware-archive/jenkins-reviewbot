@@ -45,24 +45,17 @@ import java.io.IOException;
 */
 public class ReviewboardDescriptor extends BuildStepDescriptor<Publisher> {
 
-//  private volatile ReviewboardConnection connection;
-
   private String reviewboardURL;
   private String reviewboardUsername;
   private Secret reviewboardPassword;
+
+  private boolean disableRepoCache = false;
 
   public ReviewboardDescriptor() {
     super(ReviewboardNotifier.class);
     load();
   }
 
-//  public synchronized ReviewboardConnection getConnection() {
-//    if (connection == null) {
-//      connection = new ReviewboardConnection(getReviewboardURL(), getReviewboardUsername(), getReviewboardPassword());
-//    }
-//    return connection;
-//  }
-//
   @Override
   public String getDisplayName() {
     return Messages.ReviewboardNotifier_DisplayName();
@@ -90,20 +83,18 @@ public class ReviewboardDescriptor extends BuildStepDescriptor<Publisher> {
     return Secret.toString(reviewboardPassword);
   }
 
+  public boolean getDisableRepoCache() {
+    return disableRepoCache;
+  }
+
   @Override
   public boolean configure(StaplerRequest req, JSONObject formData) throws FormException {
     reviewboardURL =      formData.getString("reviewboardURL");
     reviewboardUsername = formData.getString("reviewboardUsername");
     reviewboardPassword = Secret.fromString(formData.getString("reviewboardPassword"));
-//    ReviewboardConnection oldConnection = connection;
-//    if (oldConnection != null) {
-//      oldConnection.logout();
-//    }
-//    if (reviewboardURL == null || reviewboardURL.isEmpty()) {
-//      connection = null;
-//    } else {
-//      connection = new ReviewboardConnection(getReviewboardURL(), getReviewboardUsername(), getReviewboardPassword());
-//    }
+    if (formData.containsKey("disableRepoCache")) {
+      disableRepoCache = formData.getBoolean("disableRepoCache");
+    }
     save();
     return super.configure(req,formData);
   }

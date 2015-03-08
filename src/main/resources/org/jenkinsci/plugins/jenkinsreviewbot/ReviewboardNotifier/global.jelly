@@ -11,5 +11,10 @@
     </f:entry>
     <f:validateButton title="Test Connection" progress="Testing..."
       method="testConnection" with="reviewboardURL,reviewboardUsername,reviewboardPassword" />
+    <f:advanced>
+      <f:entry title="Disable Repositories Caching" description="By default polling job caches repositories list in memory. Check to disable caching." field="disableRepoCache">
+          <f:checkbox />
+      </f:entry>
+    </f:advanced>
   </f:section>
 </j:jelly>

@@ -158,14 +158,15 @@ public class ReviewboardPollingBuilder extends Builder {
       load();
     }
 
-    private void loadRepositories() {
+    private Map<String, Integer> loadRepositories() {
       ReviewboardDescriptor d = ReviewboardNotifier.DESCRIPTOR;
       ReviewboardConnection con = new ReviewboardConnection(d.getReviewboardURL(), d.getReviewboardUsername(), d.getReviewboardPassword());
       try {
-        repositories = con.getRepositories();
+        return con.getRepositories();
       } catch (Exception e) {
         // TODO how do we properly log this?
         e.printStackTrace();
+        return Collections.emptyMap();
       } finally {
         if (con != null) con.close();
       }
@@ -194,10 +195,16 @@ public class ReviewboardPollingBuilder extends Builder {
       ListBoxModel items = new ListBoxModel();
       // select option to allow polling requests for all repositories
       items.add("-- any --", "-1");
-      //if no repositories - try to load them again
-      if (repositories.isEmpty()) loadRepositories();
+      Map<String, Integer> localRepositories = this.repositories;
+      boolean disableCache = ReviewboardNotifier.DESCRIPTOR.getDisableRepoCache();
+      //if no repositories or caching disabled - try to load them again
+      if (localRepositories.isEmpty() || disableCache) {
+        localRepositories = loadRepositories();
+      }
+      //cache repository list
+      repositories = localRepositories;
       // select options to filter by repository id.
-      for (Map.Entry<String, Integer> e: repositories.entrySet()) {
+      for (Map.Entry<String, Integer> e: localRepositories.entrySet()) {
         items.add(e.getKey(), e.getValue().toString());
       }
       return items;
