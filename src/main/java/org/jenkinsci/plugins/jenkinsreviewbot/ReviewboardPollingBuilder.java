@@ -130,7 +130,7 @@ public class ReviewboardPollingBuilder extends Builder {
       listener.getLogger().println("Found job " + reviewbotJobName);
       for (Review.Slim review : unprocessedReviews) {
         listener.getLogger().println(review.getUrl());
-        if (!disableAdvanceNotice) con.postComment(review.getUrl(), Messages.ReviewboardPollingBuilder_Notice(), false);
+        if (!disableAdvanceNotice) con.postComment(review.getUrl(), Messages.ReviewboardPollingBuilder_Notice(), false, false);
         project.scheduleBuild2(project.getQuietPeriod(),
             cause,
             new ParametersAction(new ReviewboardParameterValue("review.url", review.getUrl())));

@@ -41,14 +41,20 @@ import java.io.IOException;
 public class ReviewboardNotifier extends Notifier implements MatrixAggregatable {
 
   private final boolean shipItOnSuccess;
+  private boolean useMarkdown = false;
 
   @DataBoundConstructor
-  public ReviewboardNotifier(boolean shipItOnSuccess) {
+  public ReviewboardNotifier(boolean shipItOnSuccess, boolean useMarkdown) {
     this.shipItOnSuccess = shipItOnSuccess;
+    this.useMarkdown = useMarkdown;
   }
 
   public boolean getShipItOnSuccess() {
     return shipItOnSuccess;
+  }
+
+  public boolean getUseMarkdown() {
+    return useMarkdown;
   }
 
   public BuildStepMonitor getRequiredMonitorService() {
@@ -86,7 +92,7 @@ public class ReviewboardNotifier extends Notifier implements MatrixAggregatable 
                    unstable    ? Messages.ReviewboardNotifier_BuildUnstable() + " " + link:
                                  Messages.ReviewboardNotifier_BuildFailure() + " " + link;
 
-      rbParam.getConnection().postComment(url, msg, success && getShipItOnSuccess());
+      rbParam.getConnection().postComment(url, msg, success && getShipItOnSuccess(), useMarkdown);
     } catch (Exception e) {
       listener.getLogger().println("Error posting to reviewboard: " + e.toString());
     }

@@ -2,4 +2,7 @@
   <f:entry title="ShipIt" description="Mark review with [Ship It] when build is successful" field="shipItOnSuccess">
     <f:checkbox />
   </f:entry>
+  <f:entry title="Use Markdown" description="Use markdown when posting the comment" field="useMarkdown">
+    <f:checkbox />
+  </f:entry>
 </j:jelly>

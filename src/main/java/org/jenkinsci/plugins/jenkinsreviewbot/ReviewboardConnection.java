@@ -170,7 +170,7 @@ public class ReviewboardConnection {
     return res;
   }
 
-  public boolean postComment(String url, String msg, boolean shipIt) throws IOException {
+  public boolean postComment(String url, String msg, boolean shipIt, boolean markdown) throws IOException {
     ensureAuthentication();
     String postUrl = buildApiUrl(url, "reviews");
     PostMethod post = new PostMethod(postUrl);
@@ -180,6 +180,11 @@ public class ReviewboardConnection {
         new NameValuePair("public", "true"),
         new NameValuePair("ship_it", String.valueOf(shipIt))
     };
+    if (markdown) {
+      List<NameValuePair> l = new LinkedList<NameValuePair>(Arrays.asList(data));
+      l.add(new NameValuePair("body_top_text_type", "markdown"));
+      data = l.toArray(new NameValuePair[4]);
+    }
     post.setRequestBody(data);
     int response = http.executeMethod(post);
     return response == 200;
