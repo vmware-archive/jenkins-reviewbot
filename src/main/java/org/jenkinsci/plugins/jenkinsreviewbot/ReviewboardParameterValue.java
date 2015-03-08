@@ -84,7 +84,7 @@ public class ReviewboardParameterValue extends ParameterValue {
     return "review.url='" + url + "'";
   }
 
-  private static final String LOCATION = "patch.diff";
+  static final String LOCATION = "patch.diff";
 
   @Override
   public BuildWrapper createBuildWrapper(AbstractBuild<?,?> build) {
@@ -99,7 +99,7 @@ public class ReviewboardParameterValue extends ParameterValue {
     return patchFailed;
   }
 
-  private void setPatchFailed(boolean patchFailed) {
+  void setPatchFailed(boolean patchFailed) {
     this.patchFailed = patchFailed;
   }
 
@@ -178,6 +178,11 @@ public class ReviewboardParameterValue extends ParameterValue {
   }
 
   private void applyPatch(BuildListener listener, FilePath patch) throws IOException, InterruptedException {
+    if (ReviewboardNotifier.DESCRIPTOR.getDisableAutoApply()) {
+      listener.getLogger().println("Skipping automatic patch application");
+      return;
+    }
+
     listener.getLogger().println("Applying "+ ReviewboardNote.encodeTo("the diff"));
     try {
       patch.act(new ApplyTask());

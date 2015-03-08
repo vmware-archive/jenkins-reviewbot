@@ -50,6 +50,7 @@ public class ReviewboardDescriptor extends BuildStepDescriptor<Publisher> {
   private Secret reviewboardPassword;
 
   private boolean disableRepoCache = false;
+  private boolean disableAutoApply = false;
 
   public ReviewboardDescriptor() {
     super(ReviewboardNotifier.class);
@@ -87,6 +88,10 @@ public class ReviewboardDescriptor extends BuildStepDescriptor<Publisher> {
     return disableRepoCache;
   }
 
+  public boolean getDisableAutoApply() {
+    return disableAutoApply;
+  }
+
   @Override
   public boolean configure(StaplerRequest req, JSONObject formData) throws FormException {
     reviewboardURL =      formData.getString("reviewboardURL");
@@ -94,6 +99,9 @@ public class ReviewboardDescriptor extends BuildStepDescriptor<Publisher> {
     reviewboardPassword = Secret.fromString(formData.getString("reviewboardPassword"));
     if (formData.containsKey("disableRepoCache")) {
       disableRepoCache = formData.getBoolean("disableRepoCache");
+    }
+    if (formData.containsKey("disableAutoApply")) {
+      disableAutoApply = formData.getBoolean("disableAutoApply");
     }
     save();
     return super.configure(req,formData);
