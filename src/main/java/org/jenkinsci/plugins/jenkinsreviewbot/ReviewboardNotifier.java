@@ -84,6 +84,7 @@ public class ReviewboardNotifier extends Notifier implements MatrixAggregatable 
     Result result = build.getResult();
     try {
       String link = build.getEnvironment(listener).get("BUILD_URL");
+      link = decorateLink(link);
       boolean patchFailed = rbParam.isPatchFailed();
       boolean success = result.equals(Result.SUCCESS);
       boolean unstable = result.equals(Result.UNSTABLE);
@@ -97,6 +98,10 @@ public class ReviewboardNotifier extends Notifier implements MatrixAggregatable 
       listener.getLogger().println("Error posting to reviewboard: " + e.toString());
     }
     return true;
+  }
+
+  private String decorateLink(String link) {
+    return useMarkdown ? "[build result]("+link.trim()+")." : link;
   }
 
   @Override

@@ -183,7 +183,8 @@ public class ReviewboardConnection {
     if (markdown) {
       List<NameValuePair> l = new LinkedList<NameValuePair>(Arrays.asList(data));
       l.add(new NameValuePair("body_top_text_type", "markdown"));
-      data = l.toArray(new NameValuePair[4]);
+      l.add(new NameValuePair("text_type",          "markdown")); //some Reviewboard versions require it
+      data = l.toArray(new NameValuePair[l.size()]);
     }
     post.setRequestBody(data);
     int response = http.executeMethod(post);
