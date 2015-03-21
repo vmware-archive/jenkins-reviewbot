@@ -65,11 +65,7 @@ public class ReviewboardConnection {
   private static final Pattern digitsPattern = Pattern.compile("\\d+");
 
   public ReviewboardConnection(String url, String user, String password) {
-    reviewboardURL = url + (url.endsWith("/")?"":"/");
-    reviewboardUsername = user;
-    reviewboardPassword = password;
-    http = new HttpClient();
-    initializeAuthentication();
+    this(url, user, password, new SimpleHttpConnectionManager());
   }
 
   public ReviewboardConnection(String url, String user, String password, HttpConnectionManager mgr) {

@@ -30,7 +30,7 @@ public class ConnectionTest {
   @Test(expected=IOException.class)
   public void testFailConnection() throws Exception {
     ReviewboardConnection bad =
-        new ReviewboardConnection(System.getProperty("reviewboard.url"),
+        new ReviewboardConnection(System.getProperty("reviewboard.url", "https://reviewboard.eng.vmware.com/"),
             System.getProperty("reviewboard.user"), "foobar");
     bad.ensureAuthentication();
   }
