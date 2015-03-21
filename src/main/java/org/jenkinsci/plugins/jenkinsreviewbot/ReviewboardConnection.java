@@ -359,20 +359,24 @@ public class ReviewboardConnection {
 
   private <T> T unmarshalResponse(String requestUrl, Class<T> clazz) {
     GetMethod request = new GetMethod(requestUrl);
+    int code;
     try {
       request.setDoAuthentication(true);
       request.setRequestHeader("Accept", "application/xml");
-      http.executeMethod(request);
-      InputStream res = request.getResponseBodyAsStream();
-      JAXBContext jaxbContext = JAXBContext.newInstance(clazz);
-      Unmarshaller unmarshaller = jaxbContext.createUnmarshaller();
-      InputStreamReader reader = new InputStreamReader(res);
-      return clazz.cast(unmarshaller.unmarshal(reader));
+      code = http.executeMethod(request);
+      if (code == 200) {
+        InputStream res = request.getResponseBodyAsStream();
+        JAXBContext jaxbContext = JAXBContext.newInstance(clazz);
+        Unmarshaller unmarshaller = jaxbContext.createUnmarshaller();
+        InputStreamReader reader = new InputStreamReader(res);
+        return clazz.cast(unmarshaller.unmarshal(reader));
+      }
     } catch (Exception e) {
       throw new RuntimeException(e);
     } finally {
       request.releaseConnection();
     }
+    throw new RuntimeException("Accessing the URL " + requestUrl + " failed with code " + code);
   }
 
   @XmlRootElement(name = "rsp")
