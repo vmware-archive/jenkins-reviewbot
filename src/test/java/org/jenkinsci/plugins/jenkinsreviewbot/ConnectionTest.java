@@ -17,7 +17,8 @@ import static junit.framework.Assert.assertNotNull;
 public class ConnectionTest {
 
   ReviewboardConnection con =
-      new ReviewboardConnection(System.getProperty("reviewboard.url"),
+      new ReviewboardConnection(
+          System.getProperty("reviewboard.url", "https://reviewboard.eng.vmware.com/"),
           System.getProperty("reviewboard.user"),
           System.getProperty("reviewboard.pwd"));
 

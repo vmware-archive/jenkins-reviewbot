@@ -160,7 +160,7 @@ public class ReviewboardConnection {
   private GetMethod execDiffMethod(String url) throws IOException {
     ensureAuthentication();
     String diffUrl = buildApiUrl(url, "diffs");
-    Response d = unmarshalResponse(diffUrl, Response.class);
+    Response d = getResponse(diffUrl, Response.class);
     if (d.count < 1) throw new RuntimeException("Review " + url + " has no diffs");
 //    String diffUrl = url.concat("diff/raw/");
     GetMethod diff = new GetMethod(diffUrl + d.count + "/");
@@ -250,7 +250,7 @@ public class ReviewboardConnection {
 
   Map<String,String> getProperties(String url) throws IOException {
     ensureAuthentication();
-    ReviewRequest response = unmarshalResponse(buildApiUrl(url, ""), ReviewRequest.class);
+    ReviewRequest response = getResponse(buildApiUrl(url, ""), ReviewRequest.class);
     String branch = response.request.branch;
     Map<String,String> m = new HashMap<String,String>();
     m.put("REVIEW_BRANCH", branch == null || branch.isEmpty() ? "master" : branch);
@@ -262,7 +262,7 @@ public class ReviewboardConnection {
   Collection<Review.Slim> getPendingReviews(long periodInHours, boolean restrictByUser, int repoid)
       throws IOException, JAXBException, ParseException {
     ensureAuthentication();
-    ReviewsResponse response = unmarshalResponse(getPendingReviewsUrl(restrictByUser, repoid), ReviewsResponse.class);
+    ReviewsResponse response = getResponse(getPendingReviewsUrl(restrictByUser, repoid), ReviewsResponse.class);
     List<ReviewItem> list = response.requests.array;
     if (list == null || list.isEmpty()) return Collections.emptyList();
     Collections.sort(list, Collections.reverseOrder());
@@ -275,7 +275,7 @@ public class ReviewboardConnection {
     });
     Function<ReviewItem, Review> enrich = new Function<ReviewItem, Review>() {
       public Review apply(@Nullable ReviewItem input) {
-        Response d = unmarshalResponse(getDiffsUrl(input.id), Response.class);
+        Response d = getResponse(getDiffsUrl(input.id), Response.class);
         Date lastUploadTime = d.count < 1 ? null : d.diffs.array.get(d.count - 1).timestamp;
         String url = reviewNumberToUrl(Long.toString(input.id));
         return new Review(url, lastUploadTime, input);
@@ -285,7 +285,7 @@ public class ReviewboardConnection {
     Predicate<Review> needsBuild = new Predicate<Review>() {
       public boolean apply(Review input) {
         if (input.getLastUpdate() == null) return false; //no diffs found
-        Response c = unmarshalResponse(getCommentsUrl(input.getInput().id), Response.class);
+        Response c = getResponse(getCommentsUrl(input.getInput().id), Response.class);
         //no comments from this user after last diff upload
         for (Item r : c.reviews.array) {
           if (reviewboardUsername.equals(r.links.user.title) &&
@@ -329,7 +329,7 @@ public class ReviewboardConnection {
   }
 
   private SortedMap<String, Integer> getRepositories(String url) throws IOException, JAXBException, ParseException {
-    Response response = unmarshalResponse(url, Response.class);
+    Response response = getResponse(url, Response.class);
     SortedMap<String, Integer> map = new TreeMap<String, Integer>(String.CASE_INSENSITIVE_ORDER);
     if (response.count > 0) {
       for (Item i : response.repositories.array) {
@@ -357,7 +357,7 @@ public class ReviewboardConnection {
     return sb.toString();
   }
 
-  private <T> T unmarshalResponse(String requestUrl, Class<T> clazz) {
+  private <T> T getResponse(String requestUrl, Class<T> clazz) {
     GetMethod request = new GetMethod(requestUrl);
     int code;
     try {
