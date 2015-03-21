@@ -35,6 +35,7 @@ import hudson.remoting.VirtualChannel;
 import hudson.tasks.BuildWrapper;
 import hudson.util.IOException2;
 import hudson.util.VariableResolver;
+import org.apache.commons.httpclient.MultiThreadedHttpConnectionManager;
 import org.apache.commons.lang.StringUtils;
 import org.kohsuke.stapler.DataBoundConstructor;
 
@@ -91,7 +92,7 @@ public class ReviewboardParameterValue extends ParameterValue {
     return new ReviewboardBuildWrapper() ;
   }
 
-  private File getLocationUnderBuild(AbstractBuild build) {
+  private File getLocationUnderBuild(AbstractBuild<?,?> build) {
     return new File(build.getRootDir(), "fileParameters/" + LOCATION);
   }
 
@@ -111,6 +112,7 @@ public class ReviewboardParameterValue extends ParameterValue {
 
   // copied from PatchParameterValue
   @Override
+  @SuppressWarnings("unchecked")
   public VariableResolver<String> createVariableResolver(AbstractBuild<?, ?> build) {
     return VariableResolver.NONE;
   }
@@ -153,7 +155,8 @@ public class ReviewboardParameterValue extends ParameterValue {
       ReviewboardDescriptor d = ReviewboardNotifier.DESCRIPTOR;
       connection = new ReviewboardConnection(d.getReviewboardURL(),
           d.getReviewboardUsername(),
-          d.getReviewboardPassword());
+          d.getReviewboardPassword(),
+          new MultiThreadedHttpConnectionManager());
     }
     return connection;
   }
@@ -226,8 +229,13 @@ public class ReviewboardParameterValue extends ParameterValue {
         FilePath patch = build.getWorkspace().child(LOCATION);
         patch.delete();
         patch.getParent().mkdirs();
-        patch.copyFrom(getConnection().getDiff(url)); //getDiffFile()
-        patch.copyTo(new FilePath(getLocationUnderBuild(build)));
+        ReviewboardConnection.DiffHandle diff = getConnection().getDiff(url);
+        try {
+          patch.copyFrom(diff.getStream()); //getDiffFile()
+          patch.copyTo(new FilePath(getLocationUnderBuild(build)));
+        } finally {
+          diff.close();
+        }
         if (patch.exists()) {
           applyPatch(listener, patch);
         }
@@ -235,7 +243,7 @@ public class ReviewboardParameterValue extends ParameterValue {
       return new BuildWrapper.Environment() {
         @Override
         public boolean tearDown( AbstractBuild build, BuildListener listener ) throws IOException, InterruptedException {
-          if (connection != null) connection.close();
+          if (connection != null) connection.close();//consider to remove, since for multi-threaded connection this will do nothing
           return super.tearDown(build, listener);
         }
       };

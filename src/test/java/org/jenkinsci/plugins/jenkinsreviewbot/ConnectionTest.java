@@ -36,8 +36,8 @@ public class ConnectionTest {
 
   @Test
   public void testDiff() throws Exception {
-    String diff = con.getDiffAsString("https://reviewboard.eng.vmware.com/r/475848/");
-    assertNotNull(diff);
+    ReviewboardConnection.DiffHandle diff = con.getDiff("https://reviewboard.eng.vmware.com/r/475848/");
+    try { assertNotNull(diff.getString()); } finally { diff.close(); }
   }
 
   @Test

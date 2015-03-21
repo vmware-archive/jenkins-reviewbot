@@ -25,10 +25,7 @@ package org.jenkinsci.plugins.jenkinsreviewbot;
 import com.google.common.base.Function;
 import com.google.common.base.Predicate;
 import com.google.common.collect.Collections2;
-import org.apache.commons.httpclient.HttpClient;
-import org.apache.commons.httpclient.NameValuePair;
-import org.apache.commons.httpclient.SimpleHttpConnectionManager;
-import org.apache.commons.httpclient.UsernamePasswordCredentials;
+import org.apache.commons.httpclient.*;
 import org.apache.commons.httpclient.auth.AuthScope;
 import org.apache.commons.httpclient.methods.GetMethod;
 import org.apache.commons.httpclient.methods.PostMethod;
@@ -41,6 +38,7 @@ import javax.xml.bind.Unmarshaller;
 import javax.xml.bind.annotation.*;
 import javax.xml.bind.annotation.adapters.XmlAdapter;
 import javax.xml.bind.annotation.adapters.XmlJavaTypeAdapter;
+import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -74,6 +72,14 @@ public class ReviewboardConnection {
     initializeAuthentication();
   }
 
+  public ReviewboardConnection(String url, String user, String password, HttpConnectionManager mgr) {
+    reviewboardURL = url + (url.endsWith("/")?"":"/");
+    reviewboardUsername = user;
+    reviewboardPassword = password;
+    http = new HttpClient(mgr);
+    initializeAuthentication();
+  }
+
   private void initializeAuthentication() {
     Host host = extractHostAndPort(reviewboardURL);
     http.getState().setCredentials(new AuthScope(host.host, host.port, AuthScope.ANY_REALM),
@@ -90,11 +96,16 @@ public class ReviewboardConnection {
     } catch (Exception e) {
       //ignore
       return false;
+    } finally {
+      post.releaseConnection();
     }
   }
 
   public void close() {
-    ((SimpleHttpConnectionManager)http.getHttpConnectionManager()).shutdown();
+    final HttpConnectionManager connectionManager = http.getHttpConnectionManager();
+    if (connectionManager instanceof SimpleHttpConnectionManager) {
+      ((SimpleHttpConnectionManager) connectionManager).shutdown();
+    }
   }
 
   static class Host {
@@ -128,14 +139,16 @@ public class ReviewboardConnection {
   }
 
   private int ensureAuthentication(boolean withRetry) throws IOException {
+    GetMethod url = new GetMethod(reviewboardURL + "api/session/");
     try {
-      GetMethod url = new GetMethod(reviewboardURL + "api/session/");
       url.setDoAuthentication(true);
       int res = http.executeMethod(url);
       return res;
     } catch (IOException e) {
       //trying to recover from failure...
       if (withRetry) return retryAuthentication(); else throw e;
+    } finally {
+      url.releaseConnection();
     }
   }
 
@@ -143,7 +156,6 @@ public class ReviewboardConnection {
     initializeAuthentication();
     return ensureAuthentication(false);
   }
-
 
   private GetMethod execDiffMethod(String url) throws IOException {
     ensureAuthentication();
@@ -158,16 +170,29 @@ public class ReviewboardConnection {
     return diff;
   }
 
-  String getDiffAsString(String url) throws IOException {
-    GetMethod get = execDiffMethod(url);
-    String res = get.getResponseBodyAsString();
-    return res;
+  DiffHandle getDiff(String url) throws IOException {
+    return new DiffHandle(url);
   }
 
-  InputStream getDiff(String url) throws IOException {
-    GetMethod get = execDiffMethod(url);
-    InputStream res = get.getResponseBodyAsStream();
-    return res;
+  class DiffHandle implements Closeable {
+    private final String url;
+    private GetMethod get = null;
+    private DiffHandle(String url) {
+      this.url = url;
+    }
+    InputStream getStream() throws IOException {
+      if (get == null) get = execDiffMethod(url);
+      InputStream res = get.getResponseBodyAsStream();
+      return res;
+    }
+    String getString() throws IOException {
+      if (get == null) get = execDiffMethod(url);
+      String res = get.getResponseBodyAsString();
+      return res;
+    }
+    public void close() throws IOException {
+      if (get != null) get.releaseConnection();
+    }
   }
 
   public boolean postComment(String url, String msg, boolean shipIt, boolean markdown) throws IOException {
@@ -187,7 +212,12 @@ public class ReviewboardConnection {
       data = l.toArray(new NameValuePair[l.size()]);
     }
     post.setRequestBody(data);
-    int response = http.executeMethod(post);
+    int response;
+    try {
+      response = http.executeMethod(post);
+    } finally {
+      post.releaseConnection();
+    }
     return response == 200;
   }
 
@@ -273,14 +303,6 @@ public class ReviewboardConnection {
     return Collections2.transform(unhandled, trim);
   }
 
-  private InputStream getXmlContent(String requestsUrl) throws IOException {
-    GetMethod requests = new GetMethod(requestsUrl);
-    requests.setDoAuthentication(true);
-    requests.setRequestHeader("Accept", "application/xml");
-    http.executeMethod(requests);
-    return requests.getResponseBodyAsStream();
-  }
-
   String getPendingReviewsUrl(boolean onlyToJenkinsUser, int repoid) {
     //e.g. https://reviewboard.eng.vmware.com/api/review-requests/?to-users=...
     StringBuilder sb = new StringBuilder(128);
@@ -336,18 +358,24 @@ public class ReviewboardConnection {
   }
 
   private <T> T unmarshalResponse(String requestUrl, Class<T> clazz) {
+    GetMethod request = new GetMethod(requestUrl);
     try {
-      InputStream res = getXmlContent(requestUrl);
+      request.setDoAuthentication(true);
+      request.setRequestHeader("Accept", "application/xml");
+      http.executeMethod(request);
+      InputStream res = request.getResponseBodyAsStream();
       JAXBContext jaxbContext = JAXBContext.newInstance(clazz);
       Unmarshaller unmarshaller = jaxbContext.createUnmarshaller();
       InputStreamReader reader = new InputStreamReader(res);
       return clazz.cast(unmarshaller.unmarshal(reader));
     } catch (Exception e) {
       throw new RuntimeException(e);
+    } finally {
+      request.releaseConnection();
     }
   }
 
-    @XmlRootElement(name = "rsp")
+  @XmlRootElement(name = "rsp")
   public static class ReviewRequest {
     @XmlElement(name = "review_request")
     ReviewItem request;
