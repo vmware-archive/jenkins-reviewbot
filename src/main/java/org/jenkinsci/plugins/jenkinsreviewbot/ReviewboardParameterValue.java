@@ -105,12 +105,6 @@ public class ReviewboardParameterValue extends ParameterValue {
   }
 
   // copied from PatchParameterValue
-//  @Override
-//  public void buildEnvVars(AbstractBuild<?, ?> build, EnvVars env) {
-//    // no environment variable
-//  }
-
-  // copied from PatchParameterValue
   @Override
   @SuppressWarnings("unchecked")
   public VariableResolver<String> createVariableResolver(AbstractBuild<?, ?> build) {
@@ -136,19 +130,6 @@ public class ReviewboardParameterValue extends ParameterValue {
     result = 31 * result + (url != null ? url.hashCode() : 0);
     return result;
   }
-
-//  private FileItem getDiffFile() {
-//    File patchFile = null;
-//    try {
-//      File tempDir = new File(System.getProperty("java.io.tmpdir"));
-//      patchFile = new File(tempDir, LOCATION);
-//      String diff = getConnection().getDiffAsString(url);
-//      savePatch(patchFile, diff);
-//    } catch (IOException e) {
-//      e.printStackTrace();
-//    }
-//    return new FileParameterValue.FileItemImpl(patchFile);
-//  }
 
   synchronized ReviewboardConnection getConnection() {
     if (connection == null) {
@@ -201,7 +182,6 @@ public class ReviewboardParameterValue extends ParameterValue {
   @Override
   public void buildEnvVars(AbstractBuild<?,?> build, EnvVars env) {
     env.put("REVIEW_URL",url);
-//    String branch = "master";
     Map<String, String> props = Collections.emptyMap();
     try {
       props = getConnection().getProperties(url);
@@ -209,18 +189,7 @@ public class ReviewboardParameterValue extends ParameterValue {
       e.printStackTrace();
     }
     env.putAll(props);
-//    env.put("REVIEW_BRANCH", branch);
   }
-
-//  copied from FileParameterValue
-//  @Override
-//  public VariableResolver<String> createVariableResolver(AbstractBuild<?, ?> build) {
-//    return new VariableResolver<String>() {
-//      public String resolve(String name) {
-//        return ReviewboardParameterValue.this.name.equals(name) ? url : null;
-//      }
-//    };
-//  }
 
   class ReviewboardBuildWrapper extends BuildWrapper {
     @Override
@@ -243,7 +212,12 @@ public class ReviewboardParameterValue extends ParameterValue {
       return new BuildWrapper.Environment() {
         @Override
         public boolean tearDown( AbstractBuild build, BuildListener listener ) throws IOException, InterruptedException {
-          if (connection != null) connection.close();//consider to remove, since for multi-threaded connection this will do nothing
+          synchronized (ReviewboardParameterValue.this) {
+            if (connection != null) {
+              connection.close();//consider to remove, since for multi-threaded connection this will do nothing
+              connection = null;
+            }
+          }
           return super.tearDown(build, listener);
         }
       };
