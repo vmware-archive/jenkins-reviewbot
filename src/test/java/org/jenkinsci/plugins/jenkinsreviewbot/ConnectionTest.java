@@ -61,4 +61,9 @@ public class ConnectionTest {
     assertEquals("itfm-cloud", m.get("REVIEW_REPOSITORY"));
   }
 
+  @Test
+  public void testSubmitter() throws Exception {
+    Map<String, String> m = con.getProperties("https://reviewboard.eng.vmware.com/r/475848/");
+    assertEquals("ymeymann", m.get("REVIEW_USER"));
+  }
 }

@@ -82,20 +82,25 @@ public class ReviewboardNotifier extends Notifier implements MatrixAggregatable 
     if (rbParam == null) throw new UnsupportedOperationException("review.url parameter is null or invalid");
     String url = rbParam.getLocation();
     Result result = build.getResult();
+    boolean patchFailed = rbParam.isPatchFailed();
+    boolean success = result.equals(Result.SUCCESS);
+    boolean unstable = result.equals(Result.UNSTABLE);
+
+    ReviewboardConnection con = new ReviewboardConnection(DESCRIPTOR.getReviewboardURL(),
+        DESCRIPTOR.getReviewboardUsername(), DESCRIPTOR.getReviewboardPassword());
     try {
       String link = build.getEnvironment(listener).get("BUILD_URL");
       link = decorateLink(build.getFullDisplayName(), link);
-      boolean patchFailed = rbParam.isPatchFailed();
-      boolean success = result.equals(Result.SUCCESS);
-      boolean unstable = result.equals(Result.UNSTABLE);
       String msg = patchFailed ? Messages.ReviewboardNotifier_PatchError():
                    success     ? Messages.ReviewboardNotifier_BuildSuccess() + " " + link:
                    unstable    ? Messages.ReviewboardNotifier_BuildUnstable() + " " + link:
                                  Messages.ReviewboardNotifier_BuildFailure() + " " + link;
 
-      rbParam.getConnection().postComment(url, msg, success && getShipItOnSuccess(), useMarkdown);
+      con.postComment(url, msg, success && getShipItOnSuccess(), useMarkdown);
     } catch (Exception e) {
       listener.getLogger().println("Error posting to reviewboard: " + e.toString());
+    } finally {
+      con.close();
     }
     return true;
   }

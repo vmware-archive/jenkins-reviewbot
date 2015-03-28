@@ -101,6 +101,8 @@ public class ReviewboardConnection {
     final HttpConnectionManager connectionManager = http.getHttpConnectionManager();
     if (connectionManager instanceof SimpleHttpConnectionManager) {
       ((SimpleHttpConnectionManager) connectionManager).shutdown();
+    } else if (connectionManager instanceof MultiThreadedHttpConnectionManager) {
+      ((MultiThreadedHttpConnectionManager) connectionManager).shutdown();
     }
   }
 
@@ -252,6 +254,8 @@ public class ReviewboardConnection {
     m.put("REVIEW_BRANCH", branch == null || branch.isEmpty() ? "master" : branch);
     String repo = response.request.links.repository.title;
     m.put("REVIEW_REPOSITORY", repo == null || repo.isEmpty() ? "unknown" : repo);
+    String submitter = response.request.links.submitter.title;
+    m.put("REVIEW_USER", submitter == null || submitter.isEmpty() ? "unknown" : submitter);
     return m;
   }
 
@@ -452,6 +456,8 @@ public class ReviewboardConnection {
     User user;
     @XmlElement
     Repository repository;
+    @XmlElement
+    User submitter;
     @XmlElement
     Link next;
   }

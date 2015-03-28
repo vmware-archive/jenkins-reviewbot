@@ -140,7 +140,7 @@ public class ReviewboardPollingBuilder extends Builder {
       e.printStackTrace(listener.getLogger());
       return false;
     } finally {
-      if (con != null) con.close();
+      con.close();
     }
   }
 

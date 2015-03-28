@@ -41,7 +41,6 @@ import org.kohsuke.stapler.DataBoundConstructor;
 
 import java.io.*;
 import java.lang.reflect.Field;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -54,6 +53,7 @@ public class ReviewboardParameterValue extends ParameterValue {
   private final String url;
   private boolean patchFailed = false;
   private transient volatile ReviewboardConnection connection = null;
+  private transient volatile Map<String, String> props = null;
 
   @DataBoundConstructor
   public ReviewboardParameterValue(String name, String value) {
@@ -182,13 +182,13 @@ public class ReviewboardParameterValue extends ParameterValue {
   @Override
   public void buildEnvVars(AbstractBuild<?,?> build, EnvVars env) {
     env.put("REVIEW_URL",url);
-    Map<String, String> props = Collections.emptyMap();
-    try {
-      props = getConnection().getProperties(url);
-    } catch (IOException e) {
-      e.printStackTrace();
+    synchronized (this) {
+      if (props == null)
+        try {
+          props = getConnection().getProperties(url);
+        } catch (IOException e) { e.printStackTrace(); }
     }
-    env.putAll(props);
+    if (props != null) env.putAll(props);
   }
 
   class ReviewboardBuildWrapper extends BuildWrapper {
@@ -214,8 +214,8 @@ public class ReviewboardParameterValue extends ParameterValue {
         public boolean tearDown( AbstractBuild build, BuildListener listener ) throws IOException, InterruptedException {
           synchronized (ReviewboardParameterValue.this) {
             if (connection != null) {
-              connection.close();//consider to remove, since for multi-threaded connection this will do nothing
-              connection = null;
+              connection.close();
+//            connection = null;  //uncomment to allow re-creation of the connection, but should not be needed
             }
           }
           return super.tearDown(build, listener);
