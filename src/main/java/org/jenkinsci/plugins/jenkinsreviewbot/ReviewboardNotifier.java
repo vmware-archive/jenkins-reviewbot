@@ -86,8 +86,6 @@ public class ReviewboardNotifier extends Notifier implements MatrixAggregatable 
     boolean success = result.equals(Result.SUCCESS);
     boolean unstable = result.equals(Result.UNSTABLE);
 
-    ReviewboardConnection con = new ReviewboardConnection(DESCRIPTOR.getReviewboardURL(),
-        DESCRIPTOR.getReviewboardUsername(), DESCRIPTOR.getReviewboardPassword());
     try {
       String link = build.getEnvironment(listener).get("BUILD_URL");
       link = decorateLink(build.getFullDisplayName(), link);
@@ -96,11 +94,9 @@ public class ReviewboardNotifier extends Notifier implements MatrixAggregatable 
                    unstable    ? Messages.ReviewboardNotifier_BuildUnstable() + " " + link:
                                  Messages.ReviewboardNotifier_BuildFailure() + " " + link;
 
-      con.postComment(url, msg, success && getShipItOnSuccess(), useMarkdown);
+      ReviewboardOps.getInstance().postComment(url, msg, success && getShipItOnSuccess(), useMarkdown);
     } catch (Exception e) {
       listener.getLogger().println("Error posting to reviewboard: " + e.toString());
-    } finally {
-      con.close();
     }
     return true;
   }

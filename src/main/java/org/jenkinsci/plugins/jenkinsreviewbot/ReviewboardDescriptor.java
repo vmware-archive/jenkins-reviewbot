@@ -28,11 +28,7 @@ import hudson.util.FormValidation;
 import hudson.util.Secret;
 import net.sf.json.JSONObject;
 import org.apache.commons.httpclient.HttpClient;
-import org.apache.commons.httpclient.NameValuePair;
-import org.apache.commons.httpclient.UsernamePasswordCredentials;
-import org.apache.commons.httpclient.auth.AuthScope;
-import org.apache.commons.httpclient.methods.GetMethod;
-import org.apache.commons.httpclient.methods.PostMethod;
+import org.apache.commons.httpclient.SimpleHttpConnectionManager;
 import org.kohsuke.stapler.QueryParameter;
 import org.kohsuke.stapler.StaplerRequest;
 
@@ -111,15 +107,17 @@ public class ReviewboardDescriptor extends BuildStepDescriptor<Publisher> {
                                          @QueryParameter("reviewboardUsername") final String reviewboardUsername,
                                          @QueryParameter("reviewboardPassword") final String reviewboardPassword)
                         throws IOException, ServletException {
-    ReviewboardConnection con = null;
+    ReviewboardConnection con = new ReviewboardConnection(reviewboardURL, reviewboardUsername, reviewboardPassword);
+    SimpleHttpConnectionManager simple = new SimpleHttpConnectionManager();
+    HttpClient http = new HttpClient(simple);
     try {
-      con = new ReviewboardConnection(reviewboardURL, reviewboardUsername, reviewboardPassword);
-      con.ensureAuthentication();
+      ReviewboardOps.ensureAuthentication(con, http);
+      try { ReviewboardOps.logout(con, http); } catch (Exception e) { /* ignore */ }
       return FormValidation.ok("Success");
     } catch (Exception e) {
       return FormValidation.error("Client error : "+e.getMessage());
     } finally {
-      if (con != null) con.logout();
+      simple.shutdown();
     }
   }
 

@@ -35,7 +35,6 @@ import hudson.remoting.VirtualChannel;
 import hudson.tasks.BuildWrapper;
 import hudson.util.IOException2;
 import hudson.util.VariableResolver;
-import org.apache.commons.httpclient.MultiThreadedHttpConnectionManager;
 import org.apache.commons.lang.StringUtils;
 import org.kohsuke.stapler.DataBoundConstructor;
 
@@ -52,7 +51,6 @@ public class ReviewboardParameterValue extends ParameterValue {
 
   private final String url;
   private boolean patchFailed = false;
-  private transient volatile ReviewboardConnection connection = null;
   private transient volatile Map<String, String> props = null;
 
   @DataBoundConstructor
@@ -131,17 +129,6 @@ public class ReviewboardParameterValue extends ParameterValue {
     return result;
   }
 
-  synchronized ReviewboardConnection getConnection() {
-    if (connection == null) {
-      ReviewboardDescriptor d = ReviewboardNotifier.DESCRIPTOR;
-      connection = new ReviewboardConnection(d.getReviewboardURL(),
-          d.getReviewboardUsername(),
-          d.getReviewboardPassword(),
-          new MultiThreadedHttpConnectionManager());
-    }
-    return connection;
-  }
-
   private void savePatch(File patchFile, String diff) throws IOException {
     if (!patchFile.exists()) patchFile.createNewFile();
     Writer w = new BufferedWriter(new FileWriter(patchFile));
@@ -153,7 +140,7 @@ public class ReviewboardParameterValue extends ParameterValue {
     //if full url is given, just make sure iit ends with /
     //but if a number is given, construct the url from number based on configured Reviewboard home URL
     if (!value.startsWith("http")) {
-      return getConnection().buildReviewUrl(value);
+      return ReviewboardConnection.fromConfiguration().buildReviewUrl(value);
     } else {
       StringBuilder sb = new StringBuilder(value);
       if (sb.charAt(sb.length() - 1) != '/' ) sb.append('/');
@@ -183,10 +170,12 @@ public class ReviewboardParameterValue extends ParameterValue {
   public void buildEnvVars(AbstractBuild<?,?> build, EnvVars env) {
     env.put("REVIEW_URL",url);
     synchronized (this) {
-      if (props == null)
+      if (props == null) {
         try {
-          props = getConnection().getProperties(url);
-        } catch (IOException e) { e.printStackTrace(); }
+          props = ReviewboardOps.getInstance().getProperties(url);
+        }
+        catch (IOException e) { e.printStackTrace(); }
+      }
     }
     if (props != null) env.putAll(props);
   }
@@ -198,7 +187,7 @@ public class ReviewboardParameterValue extends ParameterValue {
         FilePath patch = build.getWorkspace().child(LOCATION);
         patch.delete();
         patch.getParent().mkdirs();
-        ReviewboardConnection.DiffHandle diff = getConnection().getDiff(url);
+        ReviewboardOps.DiffHandle diff = ReviewboardOps.getInstance().getDiff(url);
         try {
           patch.copyFrom(diff.getStream()); //getDiffFile()
           patch.copyTo(new FilePath(getLocationUnderBuild(build)));
@@ -212,12 +201,6 @@ public class ReviewboardParameterValue extends ParameterValue {
       return new BuildWrapper.Environment() {
         @Override
         public boolean tearDown( AbstractBuild build, BuildListener listener ) throws IOException, InterruptedException {
-          synchronized (ReviewboardParameterValue.this) {
-            if (connection != null) {
-              connection.close();
-//            connection = null;  //uncomment to allow re-creation of the connection, but should not be needed
-            }
-          }
           return super.tearDown(build, listener);
         }
       };

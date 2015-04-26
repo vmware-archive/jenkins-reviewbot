@@ -22,29 +22,7 @@ IN THE SOFTWARE.
 
 package org.jenkinsci.plugins.jenkinsreviewbot;
 
-import com.google.common.base.Function;
-import com.google.common.base.Predicate;
-import com.google.common.collect.Collections2;
-import org.apache.commons.httpclient.*;
 import org.apache.commons.httpclient.auth.AuthScope;
-import org.apache.commons.httpclient.methods.GetMethod;
-import org.apache.commons.httpclient.methods.PostMethod;
-import org.jenkinsci.plugins.jenkinsreviewbot.util.Review;
-
-import javax.annotation.Nullable;
-import javax.xml.bind.JAXBContext;
-import javax.xml.bind.JAXBException;
-import javax.xml.bind.Unmarshaller;
-import javax.xml.bind.annotation.*;
-import javax.xml.bind.annotation.adapters.XmlAdapter;
-import javax.xml.bind.annotation.adapters.XmlJavaTypeAdapter;
-import java.io.Closeable;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.text.ParseException;
-import java.text.SimpleDateFormat;
-import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -54,66 +32,86 @@ import java.util.regex.Pattern;
  */
 public class ReviewboardConnection {
 
-  private static final long HOUR = 60 * 60 * 1000;
-
-  private final HttpClient http;
-
   private final String reviewboardURL;
   private final String reviewboardUsername;
   private final String reviewboardPassword;
 
   private static final Pattern digitsPattern = Pattern.compile("\\d+");
 
-  public ReviewboardConnection(String url, String user, String password) {
-    this(url, user, password, new SimpleHttpConnectionManager());
+  public static ReviewboardConnection fromConfiguration() {
+    ReviewboardDescriptor d = ReviewboardNotifier.DESCRIPTOR;
+    return new ReviewboardConnection(d.getReviewboardURL(), d.getReviewboardUsername(), d.getReviewboardPassword());
   }
 
-  public ReviewboardConnection(String url, String user, String password, HttpConnectionManager mgr) {
+  public ReviewboardConnection(String url, String user, String password) {
     reviewboardURL = url + (url.endsWith("/")?"":"/");
     reviewboardUsername = user;
     reviewboardPassword = password;
-    http = new HttpClient(mgr);
-    initializeAuthentication();
   }
 
-  private void initializeAuthentication() {
-    Host host = extractHostAndPort(reviewboardURL);
-    http.getState().setCredentials(new AuthScope(host.host, host.port, AuthScope.ANY_REALM),
-        new UsernamePasswordCredentials(reviewboardUsername, reviewboardPassword));
-    http.getParams().setAuthenticationPreemptive(true);
+  public String getReviewboardURL() {
+    return reviewboardURL;
   }
 
-  public boolean logout() {
-    PostMethod post = new PostMethod(reviewboardURL + "api/json/accounts/logout/");
-    post.setDoAuthentication(true);
-    try {
-      int response = http.executeMethod(post);
-      return response == 200;
-    } catch (Exception e) {
-      //ignore
+  public String getReviewboardUsername() {
+    return reviewboardUsername;
+  }
+
+  public String getReviewboardPassword() {
+    return reviewboardPassword;
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    if (this == o) return true;
+    if (o == null || getClass() != o.getClass()) return false;
+
+    ReviewboardConnection that = (ReviewboardConnection) o;
+
+    if (reviewboardURL != null ? !reviewboardURL.equals(that.reviewboardURL) : that.reviewboardURL != null)
       return false;
-    } finally {
-      post.releaseConnection();
-    }
+    if (reviewboardUsername != null ? !reviewboardUsername.equals(that.reviewboardUsername) : that.reviewboardUsername != null)
+      return false;
+    return !(reviewboardPassword != null ? !reviewboardPassword.equals(that.reviewboardPassword) : that.reviewboardPassword != null);
+
   }
 
-  public void close() {
-    final HttpConnectionManager connectionManager = http.getHttpConnectionManager();
-    if (connectionManager instanceof SimpleHttpConnectionManager) {
-      ((SimpleHttpConnectionManager) connectionManager).shutdown();
-    } else if (connectionManager instanceof MultiThreadedHttpConnectionManager) {
-      ((MultiThreadedHttpConnectionManager) connectionManager).shutdown();
-    }
+  @Override
+  public int hashCode() {
+    int result = reviewboardURL != null ? reviewboardURL.hashCode() : 0;
+    result = 31 * result + (reviewboardUsername != null ? reviewboardUsername.hashCode() : 0);
+    result = 31 * result + (reviewboardPassword != null ? reviewboardPassword.hashCode() : 0);
+    return result;
   }
 
-  static class Host {
+  public static class Host {
     final String host;
     final int port;
     Host(String host, int port) { this.host = host; this.port = port; }
+
+    @Override
+    public boolean equals(Object o) {
+      if (this == o) return true;
+      if (o == null || getClass() != o.getClass()) return false;
+
+      Host host1 = (Host) o;
+
+      if (port != host1.port) return false;
+      return !(host != null ? !host.equals(host1.host) : host1.host != null);
+
+    }
+
+    @Override
+    public int hashCode() {
+      int result = host != null ? host.hashCode() : 0;
+      result = 31 * result + port;
+      return result;
+    }
   }
 
-  static Host extractHostAndPort(String url) {
+  public Host getHost() {
     // e.g. 'https://reviewboard.eng.vmware.com/' -> 'reviewboard.eng.vmware.com'
+    String url = reviewboardURL;
     int startIndex = 0;
     int temp = url.indexOf("://");
     if (temp >= 0) startIndex = temp + 3;
@@ -131,95 +129,7 @@ public class ReviewboardConnection {
     return new Host(host, port);
   }
 
-  public void ensureAuthentication()  throws IOException {
-    int status = ensureAuthentication(true);
-    if (status != 200) throw new IOException("HTTP status=" + status);
-  }
-
-  private int ensureAuthentication(boolean withRetry) throws IOException {
-    GetMethod url = new GetMethod(reviewboardURL + "api/session/");
-    try {
-      url.setDoAuthentication(true);
-      int res = http.executeMethod(url);
-      return res;
-    } catch (IOException e) {
-      //trying to recover from failure...
-      if (withRetry) return retryAuthentication(); else throw e;
-    } finally {
-      url.releaseConnection();
-    }
-  }
-
-  private int retryAuthentication() throws IOException {
-    initializeAuthentication();
-    return ensureAuthentication(false);
-  }
-
-  private GetMethod execDiffMethod(String url) throws IOException {
-    ensureAuthentication();
-    String diffUrl = buildApiUrl(url, "diffs");
-    Response d = getResponse(diffUrl, Response.class);
-    if (d.count < 1) throw new RuntimeException("Review " + url + " has no diffs");
-//    String diffUrl = url.concat("diff/raw/");
-    GetMethod diff = new GetMethod(diffUrl + d.count + "/");
-    diff.setDoAuthentication(true);
-    diff.setRequestHeader("Accept", "text/x-patch");
-    http.executeMethod(diff);
-    return diff;
-  }
-
-  DiffHandle getDiff(String url) throws IOException {
-    return new DiffHandle(url);
-  }
-
-  class DiffHandle implements Closeable {
-    private final String url;
-    private GetMethod get = null;
-    private DiffHandle(String url) {
-      this.url = url;
-    }
-    InputStream getStream() throws IOException {
-      if (get == null) get = execDiffMethod(url);
-      InputStream res = get.getResponseBodyAsStream();
-      return res;
-    }
-    String getString() throws IOException {
-      if (get == null) get = execDiffMethod(url);
-      String res = get.getResponseBodyAsString();
-      return res;
-    }
-    public void close() throws IOException {
-      if (get != null) get.releaseConnection();
-    }
-  }
-
-  public boolean postComment(String url, String msg, boolean shipIt, boolean markdown) throws IOException {
-    ensureAuthentication();
-    String postUrl = buildApiUrl(url, "reviews");
-    PostMethod post = new PostMethod(postUrl);
-    post.setDoAuthentication(true);
-    NameValuePair[] data = {
-        new NameValuePair("body_top", msg),
-        new NameValuePair("public", "true"),
-        new NameValuePair("ship_it", String.valueOf(shipIt))
-    };
-    if (markdown) {
-      List<NameValuePair> l = new LinkedList<NameValuePair>(Arrays.asList(data));
-      l.add(new NameValuePair("body_top_text_type", "markdown"));
-      l.add(new NameValuePair("text_type",          "markdown")); //some Reviewboard versions require it
-      data = l.toArray(new NameValuePair[l.size()]);
-    }
-    post.setRequestBody(data);
-    int response;
-    try {
-      response = http.executeMethod(post);
-    } finally {
-      post.releaseConnection();
-    }
-    return response == 200;
-  }
-
-  String buildApiUrl(String url, String what) {
+  public String buildApiUrl(String url, String what) {
     //e.g. https://reviewboard.eng.vmware.com/r/474115/ ->
     //     https://reviewboard.eng.vmware.com/api/review-requests/474115/${what}/
     int splitPoint = url.indexOf("/r/");
@@ -246,64 +156,11 @@ public class ReviewboardConnection {
     return sb.toString();
   }
 
-  Map<String,String> getProperties(String url) throws IOException {
-    ensureAuthentication();
-    ReviewRequest response = getResponse(buildApiUrl(url, ""), ReviewRequest.class);
-    String branch = response.request.branch;
-    Map<String,String> m = new HashMap<String,String>();
-    m.put("REVIEW_BRANCH", branch == null || branch.isEmpty() ? "master" : branch);
-    String repo = response.request.links.repository.title;
-    m.put("REVIEW_REPOSITORY", repo == null || repo.isEmpty() ? "unknown" : repo);
-    String submitter = response.request.links.submitter.title;
-    m.put("REVIEW_USER", submitter == null || submitter.isEmpty() ? "unknown" : submitter);
-    return m;
+  public String getDiffsUrl(long id) {
+    return buildApiUrlFromId(id, "diffs");
   }
 
-  Collection<Review.Slim> getPendingReviews(long periodInHours, boolean restrictByUser, int repoid)
-      throws IOException, JAXBException, ParseException {
-    ensureAuthentication();
-    ReviewsResponse response = getResponse(getPendingReviewsUrl(restrictByUser, repoid), ReviewsResponse.class);
-    List<ReviewItem> list = response.requests.array;
-    if (list == null || list.isEmpty()) return Collections.emptyList();
-    Collections.sort(list, Collections.reverseOrder());
-    long period = periodInHours >= 0 ? periodInHours * HOUR : HOUR;
-    final long coldThreshold = list.get(0).lastUpdated.getTime() - period;
-    Collection<ReviewItem> hot = Collections2.filter(list, new Predicate<ReviewItem>(){
-      public boolean apply(ReviewItem input) {
-        return input.lastUpdated.getTime() >= coldThreshold; //check that the review is not too old
-      }
-    });
-    Function<ReviewItem, Review> enrich = new Function<ReviewItem, Review>() {
-      public Review apply(@Nullable ReviewItem input) {
-        Response d = getResponse(getDiffsUrl(input.id), Response.class);
-        Date lastUploadTime = d.count < 1 ? null : d.diffs.array.get(d.count - 1).timestamp;
-        String url = reviewNumberToUrl(Long.toString(input.id));
-        return new Review(url, lastUploadTime, input);
-      }
-    };
-    Collection<Review> hotRich = Collections2.transform(hot, enrich);
-    Predicate<Review> needsBuild = new Predicate<Review>() {
-      public boolean apply(Review input) {
-        if (input.getLastUpdate() == null) return false; //no diffs found
-        Response c = getResponse(getCommentsUrl(input.getInput().id), Response.class);
-        //no comments from this user after last diff upload
-        for (Item r : c.reviews.array) {
-          if (reviewboardUsername.equals(r.links.user.title) &&
-              r.timestamp.after(input.getLastUpdate())) {
-            return false;
-          }
-        }
-        return true;
-      }
-    };
-    Collection<Review> unhandled = Collections2.filter(hotRich, needsBuild);
-    Function<Review, Review.Slim> trim = new Function<Review, Review.Slim>() {
-      public Review.Slim apply(@Nullable Review input) { return input.trim(); }
-    };
-    return Collections2.transform(unhandled, trim);
-  }
-
-  String getPendingReviewsUrl(boolean onlyToJenkinsUser, int repoid) {
+  public String getPendingReviewsUrl(boolean onlyToJenkinsUser, int repoid) {
     //e.g. https://reviewboard.eng.vmware.com/api/review-requests/?to-users=...
     StringBuilder sb = new StringBuilder(128);
     sb.append(reviewboardURL).append("api/review-requests/");
@@ -318,186 +175,20 @@ public class ReviewboardConnection {
     return sb.toString();
   }
 
-  private String getRepositoriesUrl() {
+  public String getCommentsUrl(long id) {
+    return buildApiUrlFromId(id, "reviews");
+  }
+
+  public String getRepositoriesUrl() {
     // e.g. https://reviewboard.eng.vmware.com/api/repositories/
     return reviewboardURL.concat("api/repositories/?max-results=200");
   }
 
-  Map<String, Integer> getRepositories() throws IOException, JAXBException, ParseException {
-    ensureAuthentication();
-    return getRepositories(getRepositoriesUrl());
-  }
-
-  private SortedMap<String, Integer> getRepositories(String url) throws IOException, JAXBException, ParseException {
-    Response response = getResponse(url, Response.class);
-    SortedMap<String, Integer> map = new TreeMap<String, Integer>(String.CASE_INSENSITIVE_ORDER);
-    if (response.count > 0) {
-      for (Item i : response.repositories.array) {
-        map.put(i.name, i.id);
-      }
-      if (response.links.next != null) {
-        map.putAll(getRepositories(response.links.next.href));
-      }
-    }
-    return map;
-  }
-
-  private String getDiffsUrl(long id) {
-    return buildApiUrlFromId(id, "diffs");
-  }
-
-  private String getCommentsUrl(long id) {
-    return buildApiUrlFromId(id, "reviews");
-  }
-
-  private String buildApiUrlFromId(long id, String what) {
+  public String buildApiUrlFromId(long id, String what) {
     StringBuilder sb = new StringBuilder(128);
     sb.append(reviewboardURL).append("api/review-requests/").append(id).append('/');
     if (what != null && !what.isEmpty()) sb.append(what).append('/');
     return sb.toString();
-  }
-
-  private <T> T getResponse(String requestUrl, Class<T> clazz) {
-    GetMethod request = new GetMethod(requestUrl);
-    int code;
-    try {
-      request.setDoAuthentication(true);
-      request.setRequestHeader("Accept", "application/xml");
-      code = http.executeMethod(request);
-      if (code == 200) {
-        InputStream res = request.getResponseBodyAsStream();
-        JAXBContext jaxbContext = JAXBContext.newInstance(clazz);
-        Unmarshaller unmarshaller = jaxbContext.createUnmarshaller();
-        InputStreamReader reader = new InputStreamReader(res);
-        return clazz.cast(unmarshaller.unmarshal(reader));
-      }
-    } catch (Exception e) {
-      throw new RuntimeException(e);
-    } finally {
-      request.releaseConnection();
-    }
-    throw new RuntimeException("Accessing the URL " + requestUrl + " failed with code " + code);
-  }
-
-  @XmlRootElement(name = "rsp")
-  public static class ReviewRequest {
-    @XmlElement(name = "review_request")
-    ReviewItem request;
-  }
-  @XmlRootElement(name = "rsp")
-  public static class ReviewsResponse {
-    @XmlElement(name = "review_requests")
-    ReviewsRequests requests;
-    @XmlElement(name = "total_results")
-    String total;
-    @XmlElement
-    String stat;
-  }
-  public static class ReviewsRequests {
-    @XmlElementWrapper
-    @XmlElement(name = "item")
-    List<ReviewItem> array;
-  }
-  public static class ReviewItem implements Comparable<ReviewItem> {
-    @XmlJavaTypeAdapter(MyDateAdapter.class)
-    @XmlElement(name = "last_updated")
-    Date lastUpdated;
-    @XmlElement
-    String branch;
-    @XmlElement
-    long id;
-    @XmlElement
-    Links links;
-
-    public int compareTo(ReviewItem o) {
-      try {
-        return lastUpdated.compareTo(o.lastUpdated);
-      } catch (Exception e) {
-        return -1;
-      }
-    }
-  }
-  @XmlRootElement(name = "rsp")
-  public static class Response {
-    @XmlElement(name = "total_results")
-    int count;
-    @XmlElement
-    Items diffs;
-    @XmlElement
-    Items reviews;
-    @XmlElement
-    Items repositories;
-    @XmlElement
-    Links links;
-  }
-  public static class Items {
-    @XmlElementWrapper
-    @XmlElement(name = "item")
-    List<Item> array;
-  }
-  public static class Item {
-    @XmlJavaTypeAdapter(MyDateAdapter.class)
-    @XmlElement
-    Date timestamp;
-    @XmlElement
-    Links links;
-    // for repositories
-    @XmlElement
-    int id;
-    @XmlElement
-    String name;
-    @XmlElement
-    String tool;
-    @XmlElement
-    String path;
-  }
-  public static class Links {
-    @XmlElement
-    User user;
-    @XmlElement
-    Repository repository;
-    @XmlElement
-    User submitter;
-    @XmlElement
-    Link next;
-  }
-  public static class Repository {
-    @XmlElement
-    String title;
-  }
-  public static class User {
-    @XmlElement
-    String title;
-  }
-  public static class Link {
-    @XmlElement
-    String href;
-  }
-
-  public static class MyDateAdapter extends XmlAdapter<String, Date> {
-    private static final SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-
-    @Override
-    public Date unmarshal(String v) throws Exception {
-      try {
-        return javax.xml.bind.DatatypeConverter.parseDateTime(v).getTime();
-      } catch (IllegalArgumentException iae) { //to support Reviewboard version 1.6
-        try {
-          return formatter.parse(v);
-        } catch (ParseException e) {
-          throw new RuntimeException(e);
-        }
-      }
-    }
-
-    @Override
-    public String marshal(Date v) throws Exception { //isn't really used
-      Calendar c = GregorianCalendar.getInstance();
-      c.setTime(v);
-      return javax.xml.bind.DatatypeConverter.printDateTime(c);
-//      return formatter.format(v);
-    }
-
   }
 
 }

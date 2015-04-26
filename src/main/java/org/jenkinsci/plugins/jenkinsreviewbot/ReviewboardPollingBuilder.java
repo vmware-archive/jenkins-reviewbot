@@ -104,12 +104,10 @@ public class ReviewboardPollingBuilder extends Builder {
     listener.getLogger().println("Looking for reviews that need building...");
     long period = checkBackPeriod != null && !checkBackPeriod.isEmpty() ? Long.parseLong(checkBackPeriod) : 1L;
     listener.getLogger().println("Going to check reviews updated during last " + period + " hour(s): ");
-    ReviewboardDescriptor d = ReviewboardNotifier.DESCRIPTOR;
-    ReviewboardConnection con = new ReviewboardConnection(d.getReviewboardURL(),
-                                                          d.getReviewboardUsername(), d.getReviewboardPassword());
+    ReviewboardConnection con = ReviewboardConnection.fromConfiguration();
     try {
       listener.getLogger().println("Query: " + con.getPendingReviewsUrl(restrictByUser, reviewbotRepoId));
-      Collection<Review.Slim> reviews = con.getPendingReviews(period, restrictByUser, reviewbotRepoId);
+      Collection<Review.Slim> reviews = ReviewboardOps.getInstance().getPendingReviews(con, period, restrictByUser, reviewbotRepoId);
       listener.getLogger().println("Got " + reviews.size() + " reviews");
       Set<Review.Slim> unprocessedReviews = new HashSet<Review.Slim>(reviews);
       if (processedReviews != null) { //apparently, it is null when de-serialized from previous version of plugin... DUH!
@@ -130,7 +128,7 @@ public class ReviewboardPollingBuilder extends Builder {
       listener.getLogger().println("Found job " + reviewbotJobName);
       for (Review.Slim review : unprocessedReviews) {
         listener.getLogger().println(review.getUrl());
-        if (!disableAdvanceNotice) con.postComment(review.getUrl(), Messages.ReviewboardPollingBuilder_Notice(), false, false);
+        if (!disableAdvanceNotice) ReviewboardOps.getInstance().postComment(con, review.getUrl(), Messages.ReviewboardPollingBuilder_Notice(), false, false);
         project.scheduleBuild2(project.getQuietPeriod(),
             cause,
             new ParametersAction(new ReviewboardParameterValue("review.url", review.getUrl())));
@@ -139,8 +137,6 @@ public class ReviewboardPollingBuilder extends Builder {
     } catch (Exception e) {
       e.printStackTrace(listener.getLogger());
       return false;
-    } finally {
-      con.close();
     }
   }
 
@@ -159,16 +155,12 @@ public class ReviewboardPollingBuilder extends Builder {
     }
 
     private Map<String, Integer> loadRepositories() {
-      ReviewboardDescriptor d = ReviewboardNotifier.DESCRIPTOR;
-      ReviewboardConnection con = new ReviewboardConnection(d.getReviewboardURL(), d.getReviewboardUsername(), d.getReviewboardPassword());
       try {
-        return con.getRepositories();
+        return ReviewboardOps.getInstance().getRepositories();
       } catch (Exception e) {
         // TODO how do we properly log this?
         e.printStackTrace();
         return Collections.emptyMap();
-      } finally {
-        if (con != null) con.close();
       }
     }
 
