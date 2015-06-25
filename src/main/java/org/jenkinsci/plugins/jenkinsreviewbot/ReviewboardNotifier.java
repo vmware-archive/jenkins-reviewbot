@@ -89,7 +89,7 @@ public class ReviewboardNotifier extends Notifier implements MatrixAggregatable 
     try {
       String link = build.getEnvironment(listener).get("BUILD_URL");
       link = decorateLink(build.getFullDisplayName(), link);
-      String msg = patchFailed ? Messages.ReviewboardNotifier_PatchError():
+      String msg = patchFailed ? Messages.ReviewboardNotifier_PatchError() + " " + link:
                    success     ? Messages.ReviewboardNotifier_BuildSuccess() + " " + link:
                    unstable    ? Messages.ReviewboardNotifier_BuildUnstable() + " " + link:
                                  Messages.ReviewboardNotifier_BuildFailure() + " " + link;
