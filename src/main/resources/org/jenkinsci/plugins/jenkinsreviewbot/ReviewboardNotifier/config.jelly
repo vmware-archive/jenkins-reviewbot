@@ -5,4 +5,7 @@
   <f:entry title="Use Markdown" description="Use markdown when posting the comment" field="useMarkdown">
     <f:checkbox />
   </f:entry>
+  <f:entry title="Additional Message" description="Provide a custom message to post on Reviewboard" field="customMessage">
+    <f:textarea />
+  </f:entry>
 </j:jelly>

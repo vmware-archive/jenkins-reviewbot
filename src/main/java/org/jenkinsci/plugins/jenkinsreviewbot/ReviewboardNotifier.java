@@ -22,6 +22,8 @@ IN THE SOFTWARE.
 
 package org.jenkinsci.plugins.jenkinsreviewbot;
 
+import com.google.common.base.Strings;
+import hudson.EnvVars;
 import hudson.Extension;
 import hudson.Launcher;
 import hudson.matrix.MatrixAggregatable;
@@ -42,11 +44,13 @@ public class ReviewboardNotifier extends Notifier implements MatrixAggregatable 
 
   private final boolean shipItOnSuccess;
   private boolean useMarkdown = false;
+  private String customMessage = null;
 
   @DataBoundConstructor
-  public ReviewboardNotifier(boolean shipItOnSuccess, boolean useMarkdown) {
+  public ReviewboardNotifier(boolean shipItOnSuccess, boolean useMarkdown, String customMessage) {
     this.shipItOnSuccess = shipItOnSuccess;
     this.useMarkdown = useMarkdown;
+    this.customMessage = customMessage;
   }
 
   public boolean getShipItOnSuccess() {
@@ -56,6 +60,8 @@ public class ReviewboardNotifier extends Notifier implements MatrixAggregatable 
   public boolean getUseMarkdown() {
     return useMarkdown;
   }
+
+  public String getCustomMessage() { return customMessage; }
 
   public BuildStepMonitor getRequiredMonitorService() {
     return BuildStepMonitor.STEP;
@@ -87,13 +93,16 @@ public class ReviewboardNotifier extends Notifier implements MatrixAggregatable 
     boolean unstable = result.equals(Result.UNSTABLE);
 
     try {
-      String link = build.getEnvironment(listener).get("BUILD_URL");
+      EnvVars env = build.getEnvironment(listener);
+      String link = env.get("BUILD_URL");
       link = decorateLink(build.getFullDisplayName(), link);
       String msg = patchFailed ? Messages.ReviewboardNotifier_PatchError() + " " + link:
                    success     ? Messages.ReviewboardNotifier_BuildSuccess() + " " + link:
                    unstable    ? Messages.ReviewboardNotifier_BuildUnstable() + " " + link:
                                  Messages.ReviewboardNotifier_BuildFailure() + " " + link;
-
+      if (!Strings.isNullOrEmpty(customMessage)) {
+        msg = msg + "\n" + env.expand(customMessage);
+      }
       ReviewboardOps.getInstance().postComment(url, msg, success && getShipItOnSuccess(), useMarkdown);
     } catch (Exception e) {
       listener.getLogger().println("Error posting to reviewboard: " + e.toString());
