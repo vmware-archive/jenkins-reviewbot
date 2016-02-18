@@ -177,7 +177,7 @@ public class ReviewboardPollingBuilder extends Builder {
     public ListBoxModel doFillReviewbotJobNameItems() {
       ListBoxModel items = new ListBoxModel();
       for (AbstractProject project: Jenkins.getInstance().getAllItems(AbstractProject.class)) {
-        items.add(project.getName());
+        items.add(project.getFullName());
       }
       return items;
     }
