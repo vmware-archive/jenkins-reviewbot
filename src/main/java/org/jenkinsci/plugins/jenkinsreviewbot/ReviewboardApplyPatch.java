@@ -8,33 +8,36 @@ import hudson.model.*;
 import hudson.tasks.BuildStepDescriptor;
 import hudson.tasks.Builder;
 import org.kohsuke.stapler.DataBoundConstructor;
+import org.jenkinsci.Symbol;
 
-import java.io.IOException;
+import jenkins.tasks.SimpleBuildStep;
+
+import java.io.*;
 
 /**
  * User: ymeymann
  * Date: 3/8/2015 10:49 PM
  */
-public class ReviewboardApplyPatch extends Builder {
+public class ReviewboardApplyPatch extends Builder implements SimpleBuildStep {
+
   @DataBoundConstructor
   public ReviewboardApplyPatch() {}
 
   @Override
-  public boolean perform(AbstractBuild build, Launcher launcher, BuildListener listener) throws InterruptedException, IOException {
+  public void perform(Run<?, ?> run, FilePath workspace, Launcher launcher, TaskListener listener) throws InterruptedException, IOException {
     if (!ReviewboardNotifier.DESCRIPTOR.getDisableAutoApply()) {
       listener.getLogger().println("Patch already applied. Ignoring");
-      return true;
+      return;
     }
 
     listener.getLogger().println("Applying "+ ReviewboardNote.encodeTo("the diff"));
-    ParametersAction paramAction = build.getAction(ParametersAction.class);
+    ParametersAction paramAction = run.getAction(ParametersAction.class);
     ParameterValue param = paramAction.getParameter("review.url");
     ReviewboardParameterValue rbParam = (ReviewboardParameterValue) param;
     if (rbParam == null) throw new UnsupportedOperationException("review.url parameter is null or invalid");
-    FilePath patch = build.getWorkspace().child(ReviewboardParameterValue.LOCATION);
+    FilePath patch = workspace.child(ReviewboardParameterValue.LOCATION);
     try {
       patch.act(new ReviewboardParameterValue.ApplyTask());
-      return true;
     } catch (Exception e) {
       listener.getLogger().println("Failed to apply patch due to:");
       e.printStackTrace(listener.getLogger());
@@ -48,7 +51,7 @@ public class ReviewboardApplyPatch extends Builder {
     return (DescriptorImpl)super.getDescriptor();
   }
 
-  @Extension
+  @Extension @Symbol("reviewboardApplyPatch")
   public static final class DescriptorImpl extends BuildStepDescriptor<Builder> {
 
     public DescriptorImpl() {

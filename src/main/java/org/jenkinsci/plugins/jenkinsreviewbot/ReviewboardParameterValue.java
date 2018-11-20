@@ -25,18 +25,28 @@ package org.jenkinsci.plugins.jenkinsreviewbot;
 import com.cloudbees.diff.ContextualPatch;
 import com.cloudbees.diff.PatchException;
 import hudson.EnvVars;
+import hudson.Extension;
 import hudson.FilePath;
 import hudson.Launcher;
 import hudson.model.AbstractBuild;
+import hudson.model.AbstractProject;
 import hudson.model.BuildListener;
+import hudson.model.TaskListener;
 import hudson.model.ParameterValue;
+import hudson.model.ParametersAction;
+import hudson.model.Run;
 import hudson.model.StringParameterValue;
 import hudson.remoting.VirtualChannel;
 import hudson.tasks.BuildWrapper;
+import hudson.tasks.BuildWrapperDescriptor;
 import hudson.util.IOException2;
 import hudson.util.VariableResolver;
 import org.apache.commons.lang.StringUtils;
 import org.kohsuke.stapler.DataBoundConstructor;
+import jenkins.tasks.SimpleBuildWrapper;
+import jenkins.MasterToSlaveFileCallable;
+
+import edu.umd.cs.findbugs.annotations.CheckForNull;
 
 import java.io.*;
 import java.lang.reflect.Field;
@@ -49,12 +59,13 @@ import java.util.Map;
  */
 public class ReviewboardParameterValue extends ParameterValue {
 
+  @CheckForNull
   private final String url;
   private boolean patchFailed = false;
   private transient volatile Map<String, String> props = null;
 
   @DataBoundConstructor
-  public ReviewboardParameterValue(String name, String value) {
+  public ReviewboardParameterValue(String value) {
     super("review.url");
     url = buildReviewUrl(value);
   }
@@ -63,7 +74,7 @@ public class ReviewboardParameterValue extends ParameterValue {
     try {
       Field $value = StringParameterValue.class.getDeclaredField("value");
       $value.setAccessible(true);
-      ReviewboardParameterValue v = new ReviewboardParameterValue(rhs.getName(), (String)$value.get(rhs));
+      ReviewboardParameterValue v = new ReviewboardParameterValue((String)$value.get(rhs));
       return v;
     } catch (NoSuchFieldException e) {
       throw new Error(e);
@@ -72,8 +83,7 @@ public class ReviewboardParameterValue extends ParameterValue {
     }
   }
 
-
-
+  @CheckForNull
   public String getLocation() {
     return url;
   }
@@ -87,11 +97,11 @@ public class ReviewboardParameterValue extends ParameterValue {
 
   @Override
   public BuildWrapper createBuildWrapper(AbstractBuild<?,?> build) {
-    return new ReviewboardBuildWrapper() ;
+    return new ReviewboardBuildWrapper();
   }
 
-  private File getLocationUnderBuild(AbstractBuild<?,?> build) {
-    return new File(build.getRootDir(), "fileParameters/" + LOCATION);
+  private File getLocationUnderBuild(Run<?,?> run) {
+    return new File(run.getRootDir(), "fileParameters/" + LOCATION);
   }
 
   public boolean isPatchFailed() {
@@ -137,7 +147,7 @@ public class ReviewboardParameterValue extends ParameterValue {
   }
 
   private String buildReviewUrl(String value) {
-    //if full url is given, just make sure iit ends with /
+    //if full url is given, just make sure it ends with /
     //but if a number is given, construct the url from number based on configured Reviewboard home URL
     if (!value.startsWith("http")) {
       return ReviewboardConnection.fromConfiguration().buildReviewUrl(value);
@@ -148,7 +158,7 @@ public class ReviewboardParameterValue extends ParameterValue {
     }
   }
 
-  private void applyPatch(BuildListener listener, FilePath patch) throws IOException, InterruptedException {
+  private void applyPatch(TaskListener listener, FilePath patch) throws IOException, InterruptedException {
     if (ReviewboardNotifier.DESCRIPTOR.getDisableAutoApply()) {
       listener.getLogger().println("Skipping automatic patch application");
       return;
@@ -180,34 +190,55 @@ public class ReviewboardParameterValue extends ParameterValue {
     if (props != null) env.putAll(props);
   }
 
-  class ReviewboardBuildWrapper extends BuildWrapper {
+  public static class ReviewboardBuildWrapper extends SimpleBuildWrapper {
+
+    @DataBoundConstructor
+    public ReviewboardBuildWrapper() {}
+
     @Override
-    public BuildWrapper.Environment setUp(AbstractBuild build, Launcher launcher, BuildListener listener) throws IOException, InterruptedException {
+    public void setUp(Context context, Run<?, ?> run, FilePath workspace, Launcher launcher, TaskListener listener, EnvVars envVars) throws IOException, InterruptedException {
+
+      ParametersAction paramAction = run.getAction(ParametersAction.class);
+      ReviewboardParameterValue rbParamValue = (ReviewboardParameterValue) paramAction.getParameter("review.url");
+      if (rbParamValue == null) throw new UnsupportedOperationException("review.url parameter is null or invalid");
+      String url = rbParamValue.getLocation();
+      context.env("REVIEW_URL_VALUE",url); // environment variable is used in pipeline script to get review url
+
       if (!StringUtils.isEmpty(url)) {
-        FilePath patch = build.getWorkspace().child(LOCATION);
+        FilePath patch = workspace.child(LOCATION);
         patch.delete();
         patch.getParent().mkdirs();
         ReviewboardOps.DiffHandle diff = ReviewboardOps.getInstance().getDiff(url);
         try {
           patch.copyFrom(diff.getStream()); //getDiffFile()
-          patch.copyTo(new FilePath(getLocationUnderBuild(build)));
+          patch.copyTo(new FilePath(rbParamValue.getLocationUnderBuild(run)));
         } finally {
           diff.close();
         }
         if (patch.exists()) {
-          applyPatch(listener, patch);
+          rbParamValue.applyPatch(listener, patch);
         }
       }
-      return new BuildWrapper.Environment() {
-        @Override
-        public boolean tearDown( AbstractBuild build, BuildListener listener ) throws IOException, InterruptedException {
-          return super.tearDown(build, listener);
-        }
-      };
     }
+
+    @Extension
+    public static class ReviewboardParameterDescriptor extends BuildWrapperDescriptor {
+
+      @Override
+      public String getDisplayName() {
+        return "Reviewboard parameter value wrapper";
+      }
+
+      @Override
+      public boolean isApplicable(AbstractProject<?, ?> item) {
+        return true;
+      }
+
+    }
+
   }
 
-  static class ApplyTask implements FilePath.FileCallable<Void> {
+  static class ApplyTask extends MasterToSlaveFileCallable<Void> {
     private static final long serialVersionUID = 1L;
 
     public Void invoke(File diff, VirtualChannel channel) throws IOException, InterruptedException {

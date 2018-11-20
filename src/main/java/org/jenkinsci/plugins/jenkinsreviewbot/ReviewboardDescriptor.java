@@ -32,6 +32,8 @@ import org.apache.commons.httpclient.SimpleHttpConnectionManager;
 import org.kohsuke.stapler.QueryParameter;
 import org.kohsuke.stapler.StaplerRequest;
 
+import org.jenkinsci.Symbol;
+
 import javax.servlet.ServletException;
 import java.io.IOException;
 
@@ -39,6 +41,7 @@ import java.io.IOException;
 * User: ymeymann
 * Date: 6/27/13 3:55 PM
 */
+@Symbol("notifyReviewboard")
 public class ReviewboardDescriptor extends BuildStepDescriptor<Publisher> {
 
   private String reviewboardURL;

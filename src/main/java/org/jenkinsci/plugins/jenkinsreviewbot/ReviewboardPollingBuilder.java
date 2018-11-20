@@ -24,7 +24,9 @@ package org.jenkinsci.plugins.jenkinsreviewbot;
 
 import com.google.common.base.Function;
 import com.google.common.collect.Collections2;
+import hudson.AbortException;
 import hudson.Extension;
+import hudson.FilePath;
 import hudson.Launcher;
 import hudson.init.InitMilestone;
 import hudson.init.Initializer;
@@ -33,8 +35,14 @@ import hudson.tasks.BuildStepDescriptor;
 import hudson.tasks.Builder;
 import hudson.util.ListBoxModel;
 import jenkins.model.Jenkins;
+import jenkins.model.ParameterizedJobMixIn;
+import jenkins.tasks.SimpleBuildStep;
 import org.jenkinsci.plugins.jenkinsreviewbot.util.Review;
+import org.jenkinsci.Symbol;
 import org.kohsuke.stapler.DataBoundConstructor;
+import org.kohsuke.stapler.DataBoundSetter;
+
+import edu.umd.cs.findbugs.annotations.CheckForNull;
 
 import javax.annotation.Nullable;
 import java.util.*;
@@ -43,23 +51,44 @@ import java.util.*;
  * User: ymeymann
  * Date: 9/3/13 1:12 AM
  */
-public class ReviewboardPollingBuilder extends Builder {
+public class ReviewboardPollingBuilder extends Builder implements SimpleBuildStep {
 
-  private final String reviewbotJobName;
-  private final String checkBackPeriod;
-  private final int reviewbotRepoId;
+  @CheckForNull
+  private String reviewbotJobName;
+  private String checkBackPeriod = "1";
+  private int reviewbotRepoId = -1;
   private boolean restrictByUser = true;
   private Set<String> processedReviews = new HashSet<String>();
-  private final boolean disableAdvanceNotice;
+  private boolean disableAdvanceNotice = false;
   private Map<String, Date> processedReviewDates = new HashMap<String, Date>();
 
   @DataBoundConstructor
-  public ReviewboardPollingBuilder(String reviewbotJobName, String checkBackPeriod,
-                                   String reviewbotRepoId, boolean restrictByUser, boolean disableAdvanceNotice) {
-    this.reviewbotRepoId = reviewbotRepoId == null || reviewbotRepoId.isEmpty() ? -1 : Integer.parseInt(reviewbotRepoId);
-    this.restrictByUser = restrictByUser;
+  public ReviewboardPollingBuilder(String reviewbotJobName) {
     this.reviewbotJobName = reviewbotJobName;
+  }
+
+  @DataBoundSetter
+  public void setReviewbotJobName(String reviewbotJobName) {
+    this.reviewbotJobName = reviewbotJobName;
+  }
+
+  @DataBoundSetter
+  public void setCheckBackPeriod(String checkBackPeriod) {
     this.checkBackPeriod = checkBackPeriod;
+  }
+
+  @DataBoundSetter
+  public void setReviewbotRepoId(int reviewbotRepoId) {
+    this.reviewbotRepoId = reviewbotRepoId;
+  }
+
+  @DataBoundSetter
+  public void setRestrictByUser(boolean restrictByUser) {
+    this.restrictByUser = restrictByUser;
+  }
+
+  @DataBoundSetter
+  public void setDisableAdvanceNotice(boolean disableAdvanceNotice) {
     this.disableAdvanceNotice = disableAdvanceNotice;
   }
 
@@ -100,7 +129,7 @@ public class ReviewboardPollingBuilder extends Builder {
   }
 
   @Override
-  public boolean perform(AbstractBuild build, Launcher launcher, BuildListener listener) {
+  public void perform(Run<?, ?> run, FilePath workspace, Launcher launcher, TaskListener listener) {
     listener.getLogger().println("Looking for reviews that need building...");
     long period = checkBackPeriod != null && !checkBackPeriod.isEmpty() ? Long.parseLong(checkBackPeriod) : 1L;
     listener.getLogger().println("Going to check reviews updated during last " + period + " hour(s): ");
@@ -116,27 +145,20 @@ public class ReviewboardPollingBuilder extends Builder {
       }
       listener.getLogger().println("After removing previously processed, left with " + unprocessedReviews.size() + " reviews");
       updateProcessed(reviews);
-      if (unprocessedReviews.isEmpty()) return true;
-      Cause cause = new Cause.UpstreamCause((Run<?,?>)build); //TODO not sure what should be put here
-      listener.getLogger().println("Setting cause to this build");
+      if (unprocessedReviews.isEmpty()) return;
       Jenkins jenkins = Jenkins.getInstance();
-      AbstractProject project = jenkins.getItem(reviewbotJobName, jenkins, AbstractProject.class);
-      if (project == null) {
-        listener.getLogger().println("ERROR: Job named " + reviewbotJobName + " not found");
-        return false;
+      Job job = jenkins.getItem(reviewbotJobName, jenkins, Job.class);
+      if (job == null) {
+        throw new AbortException("ERROR: Job named " + reviewbotJobName + " not found");
       }
       listener.getLogger().println("Found job " + reviewbotJobName);
       for (Review.Slim review : unprocessedReviews) {
         listener.getLogger().println(review.getUrl());
         if (!disableAdvanceNotice) ReviewboardOps.getInstance().postComment(con, review.getUrl(), Messages.ReviewboardPollingBuilder_Notice(), false, false);
-        project.scheduleBuild2(project.getQuietPeriod(),
-            cause,
-            new ParametersAction(new ReviewboardParameterValue("review.url", review.getUrl())));
+        ParameterizedJobMixIn.scheduleBuild2(job, -1, new ParametersAction(new ReviewboardParameterValue(review.getUrl())));
       }
-      return true;
     } catch (Exception e) {
       e.printStackTrace(listener.getLogger());
-      return false;
     }
   }
 
@@ -145,7 +167,7 @@ public class ReviewboardPollingBuilder extends Builder {
     return (DescriptorImpl) super.getDescriptor();
   }
 
-  @Extension
+  @Extension @Symbol("checkForReviews")
   public static final class DescriptorImpl extends BuildStepDescriptor<Builder> {
 
     private Map<String, Integer> repositories = Collections.emptyMap();
@@ -176,7 +198,7 @@ public class ReviewboardPollingBuilder extends Builder {
 
     public ListBoxModel doFillReviewbotJobNameItems() {
       ListBoxModel items = new ListBoxModel();
-      for (AbstractProject project: Jenkins.getInstance().getAllItems(AbstractProject.class)) {
+      for (Job project: Jenkins.getInstance().getAllItems(Job.class)) {
         items.add(project.getName());
       }
       return items;

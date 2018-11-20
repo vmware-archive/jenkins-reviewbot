@@ -23,8 +23,10 @@ IN THE SOFTWARE.
 package org.jenkinsci.plugins.jenkinsreviewbot;
 
 import com.google.common.base.Strings;
+import hudson.AbortException;
 import hudson.EnvVars;
 import hudson.Extension;
+import hudson.FilePath;
 import hudson.Launcher;
 import hudson.matrix.MatrixAggregatable;
 import hudson.matrix.MatrixAggregator;
@@ -32,7 +34,12 @@ import hudson.matrix.MatrixBuild;
 import hudson.model.*;
 import hudson.tasks.BuildStepMonitor;
 import hudson.tasks.Notifier;
+import hudson.Util;
+import jenkins.tasks.SimpleBuildStep;
 import org.kohsuke.stapler.DataBoundConstructor;
+import org.kohsuke.stapler.DataBoundSetter;
+
+import edu.umd.cs.findbugs.annotations.CheckForNull;
 
 import java.io.IOException;
 
@@ -40,17 +47,29 @@ import java.io.IOException;
  * User: ymeymann
  * Date: 6/3/13 10:09 PM
  */
-public class ReviewboardNotifier extends Notifier implements MatrixAggregatable {
+public class ReviewboardNotifier extends Notifier implements MatrixAggregatable, SimpleBuildStep {
 
-  private final boolean shipItOnSuccess;
+  private boolean shipItOnSuccess = false;
   private boolean useMarkdown = false;
-  private String customMessage = null;
+  @CheckForNull
+  private String customMessage;
 
   @DataBoundConstructor
-  public ReviewboardNotifier(boolean shipItOnSuccess, boolean useMarkdown, String customMessage) {
+  public ReviewboardNotifier() {}
+
+  @DataBoundSetter
+  public void setShipItOnSuccess(boolean shipItOnSuccess) {
     this.shipItOnSuccess = shipItOnSuccess;
+  }
+
+  @DataBoundSetter
+  public void setUseMarkdown(boolean useMarkdown) {
     this.useMarkdown = useMarkdown;
-    this.customMessage = customMessage;
+  }
+
+  @DataBoundSetter
+  public void setCustomMessage(@CheckForNull String customMessage) {
+    this.customMessage = Util.fixNull(customMessage);
   }
 
   public boolean getShipItOnSuccess() {
@@ -61,7 +80,10 @@ public class ReviewboardNotifier extends Notifier implements MatrixAggregatable 
     return useMarkdown;
   }
 
-  public String getCustomMessage() { return customMessage; }
+  @CheckForNull
+  public String getCustomMessage() {
+    return customMessage;
+  }
 
   public BuildStepMonitor getRequiredMonitorService() {
     return BuildStepMonitor.STEP;
@@ -76,9 +98,9 @@ public class ReviewboardNotifier extends Notifier implements MatrixAggregatable 
     };
   }
 
-  private boolean notifyReviewboard(BuildListener listener, AbstractBuild<?, ?> build) {
-    listener.getLogger().println("Going to notify reviewboard about " + build.getDisplayName());
-    ParametersAction paramAction = build.getAction(ParametersAction.class);
+  private boolean notifyReviewboard(TaskListener listener, Run<?, ?> run) throws IOException {
+    listener.getLogger().println("Going to notify reviewboard about " + run.getDisplayName());
+    ParametersAction paramAction = run.getAction(ParametersAction.class);
     ParameterValue param = paramAction.getParameter("review.url");
     ReviewboardParameterValue rbParam =
       param instanceof ReviewboardParameterValue ? (ReviewboardParameterValue)param :
@@ -87,15 +109,20 @@ public class ReviewboardNotifier extends Notifier implements MatrixAggregatable 
       null;
     if (rbParam == null) throw new UnsupportedOperationException("review.url parameter is null or invalid");
     String url = rbParam.getLocation();
-    Result result = build.getResult();
+    if (run.getResult() == null) {
+      if (run.isBuilding()) throw new AbortException("Cannot get the result of the build: it's still building");
+      else throw new AbortException("Cannot get build result");
+    }
+
+    Result result = run.getResult();
     boolean patchFailed = rbParam.isPatchFailed();
     boolean success = result.equals(Result.SUCCESS);
     boolean unstable = result.equals(Result.UNSTABLE);
 
     try {
-      EnvVars env = build.getEnvironment(listener);
+      EnvVars env = run.getEnvironment(listener);
       String link = env.get("BUILD_URL");
-      link = decorateLink(build.getFullDisplayName(), link);
+      link = decorateLink(run.getFullDisplayName(), link);
       String msg = patchFailed ? Messages.ReviewboardNotifier_PatchError() + " " + link:
                    success     ? Messages.ReviewboardNotifier_BuildSuccess() + " " + link:
                    unstable    ? Messages.ReviewboardNotifier_BuildUnstable() + " " + link:
@@ -115,8 +142,8 @@ public class ReviewboardNotifier extends Notifier implements MatrixAggregatable 
   }
 
   @Override
-  public boolean perform(AbstractBuild<?, ?> build, Launcher launcher, BuildListener listener) throws InterruptedException, IOException {
-    return notifyReviewboard(listener, build);
+  public void perform(Run<?, ?> run, FilePath workspace, Launcher launcher, TaskListener listener) throws InterruptedException, IOException {
+    notifyReviewboard(listener, run);
   }
 
   @Override
