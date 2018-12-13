@@ -197,11 +197,14 @@ public class ReviewboardOps {
   public Collection<Review.Slim> getPendingReviews(final ReviewboardConnection con, long periodInHours,
                                                    boolean restrictByUser, int repoid)
           throws IOException, JAXBException, ParseException {
+    // Connect to Reviewboard
     ensureAuthentication(con, http);
     ReviewsResponse response = getResponse(http, con.getPendingReviewsUrl(restrictByUser, repoid), ReviewsResponse.class);
+    // Get a list of the responses
     List<ReviewItem> list = response.requests.array;
     if (list == null || list.isEmpty()) return Collections.emptyList();
     Collections.sort(list, Collections.reverseOrder());
+    // Filter reviews out if too old
     long period = periodInHours >= 0 ? periodInHours * HOUR : HOUR;
     final long coldThreshold = list.get(0).lastUpdated.getTime() - period;
     Collection<ReviewItem> hot = Collections2.filter(list, new Predicate<ReviewItem>() {
@@ -209,20 +212,21 @@ public class ReviewboardOps {
         return input.lastUpdated.getTime() >= coldThreshold; //check that the review is not too old
       }
     });
-    Function<ReviewItem, Review> enrich = new Function<ReviewItem, Review>() {
+    // Turn ReviewItem into Review
+    Collection<Review> hotRich = Collections2.transform(hot, new Function<ReviewItem, Review>() {
       public Review apply(@Nullable ReviewItem input) {
         Response d = getResponse(http, con.getDiffsUrl(input.id), Response.class);
         Date lastUploadTime = d.count < 1 ? null : d.diffs.array.get(d.count - 1).timestamp;
         String url = con.reviewNumberToUrl(Long.toString(input.id));
         return new Review(url, lastUploadTime, input);
       }
-    };
-    Collection<Review> hotRich = Collections2.transform(hot, enrich);
-    Predicate<Review> needsBuild = new Predicate<Review>() {
+    });
+    // Remove reviews requests that have already been reviewed by this program
+    Collection<Review> unhandled = Collections2.filter(hotRich, new Predicate<Review>() {
       public boolean apply(Review input) {
         if (input.getLastUpdate() == null) return false; //no diffs found
-        Response c = getResponse(http, con.getCommentsUrl(input.getInput().id), Response.class);
-        //no comments from this user after last diff upload
+        String commentsUrl = con.getCommentsUrl(input.getInput().id);
+        Response c = getResponse(http, commentsUrl, Response.class);
         for (Item r : c.reviews.array) {
           if (con.getReviewboardUsername().equals(r.links.user.title) &&
                   r.timestamp.after(input.getLastUpdate())) {
@@ -231,12 +235,12 @@ public class ReviewboardOps {
         }
         return true;
       }
-    };
-    Collection<Review> unhandled = Collections2.filter(hotRich, needsBuild);
-    Function<Review, Review.Slim> trim = new Function<Review, Review.Slim>() {
+    });
+    // Turn Review into Review.Slim
+    Collection<Review.Slim> pendingReviews = Collections2.transform(unhandled, new Function<Review, Review.Slim>() {
       public Review.Slim apply(@Nullable Review input) { return input.trim(); }
-    };
-    return Collections2.transform(unhandled, trim);
+    });
+    return pendingReviews;
   }
 
   /* ----------------- post comment -------------------- */

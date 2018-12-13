@@ -3,6 +3,8 @@ package org.jenkinsci.plugins.jenkinsreviewbot.util;
 import org.jenkinsci.plugins.jenkinsreviewbot.ReviewboardConnection;
 import org.jenkinsci.plugins.jenkinsreviewbot.ReviewboardOps;
 
+import java.io.Serializable;
+
 import java.util.Date;
 
 /**
@@ -36,7 +38,7 @@ public class Review {
     return new Slim(url, lastUpdate);
   }
 
-  public static class Slim {
+  public static class Slim implements Serializable {
     private final String url;
     private final Date lastUpdate;
 
