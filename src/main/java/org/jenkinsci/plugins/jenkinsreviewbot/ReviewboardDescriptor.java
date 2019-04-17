@@ -29,6 +29,7 @@ import hudson.util.Secret;
 import net.sf.json.JSONObject;
 import org.apache.commons.httpclient.HttpClient;
 import org.apache.commons.httpclient.SimpleHttpConnectionManager;
+import org.kohsuke.stapler.DataBoundSetter;
 import org.kohsuke.stapler.QueryParameter;
 import org.kohsuke.stapler.StaplerRequest;
 
@@ -75,32 +76,57 @@ public class ReviewboardDescriptor extends BuildStepDescriptor<Publisher> {
     return reviewboardURL;
   }
 
+  @DataBoundSetter
+  public void setReviewboardURL(String reviewboardURL) {
+    this.reviewboardURL = reviewboardURL;
+  }
+
   public String getReviewboardUsername() {
     return reviewboardUsername;
+  }
+
+  @DataBoundSetter
+  public void setReviewboardUsername(String reviewboardUsername) {
+    this.reviewboardUsername = reviewboardUsername;
   }
 
   public String getReviewboardPassword() {
     return Secret.toString(reviewboardPassword);
   }
 
+  @DataBoundSetter
+  public void setReviewboardPassword(Secret reviewboardPassword) {
+    this.reviewboardPassword = reviewboardPassword;
+  }
+
   public boolean getDisableRepoCache() {
     return disableRepoCache;
+  }
+
+  @DataBoundSetter
+  public void setDisableRepoCache(boolean disableRepoCache) {
+    this.disableRepoCache = disableRepoCache;
   }
 
   public boolean getDisableAutoApply() {
     return disableAutoApply;
   }
 
+  @DataBoundSetter
+  public void setDisableAutoApply(boolean disableAutoApply) {
+    this.disableAutoApply = disableAutoApply;
+  }
+
   @Override
   public boolean configure(StaplerRequest req, JSONObject formData) throws FormException {
-    reviewboardURL =      formData.getString("reviewboardURL");
-    reviewboardUsername = formData.getString("reviewboardUsername");
-    reviewboardPassword = Secret.fromString(formData.getString("reviewboardPassword"));
+    setReviewboardURL(formData.getString("reviewboardURL"));
+    setReviewboardUsername(formData.getString("reviewboardUsername"));
+    setReviewboardPassword(Secret.fromString(formData.getString("reviewboardPassword")));
     if (formData.containsKey("disableRepoCache")) {
-      disableRepoCache = formData.getBoolean("disableRepoCache");
+      setDisableRepoCache(formData.getBoolean("disableRepoCache"));
     }
     if (formData.containsKey("disableAutoApply")) {
-      disableAutoApply = formData.getBoolean("disableAutoApply");
+      setDisableAutoApply(formData.getBoolean("disableAutoApply"));
     }
     save();
     return super.configure(req,formData);
@@ -110,7 +136,7 @@ public class ReviewboardDescriptor extends BuildStepDescriptor<Publisher> {
                                          @QueryParameter("reviewboardUsername") final String reviewboardUsername,
                                          @QueryParameter("reviewboardPassword") final String reviewboardPassword)
                         throws IOException, ServletException {
-    ReviewboardConnection con = new ReviewboardConnection(reviewboardURL, reviewboardUsername, reviewboardPassword);
+    ReviewboardConnection con = new ReviewboardConnection(getReviewboardURL(),getReviewboardUsername(), getReviewboardPassword());
     SimpleHttpConnectionManager simple = new SimpleHttpConnectionManager();
     HttpClient http = new HttpClient(simple);
     try {
