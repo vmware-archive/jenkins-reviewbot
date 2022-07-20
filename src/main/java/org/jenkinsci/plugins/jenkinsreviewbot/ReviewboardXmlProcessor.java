@@ -6,68 +6,84 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
 
-import javax.xml.bind.JAXBContext;
-import javax.xml.bind.JAXBException;
-import javax.xml.bind.Unmarshaller;
-import javax.xml.bind.annotation.XmlElement;
-import javax.xml.bind.annotation.XmlElementWrapper;
-import javax.xml.bind.annotation.XmlRootElement;
-import javax.xml.bind.annotation.adapters.XmlAdapter;
-import javax.xml.bind.annotation.adapters.XmlJavaTypeAdapter;
+import com.thoughtworks.xstream.XStream;
+import com.thoughtworks.xstream.annotations.XStreamAlias;
+import com.thoughtworks.xstream.annotations.XStreamConverter;
+import com.thoughtworks.xstream.converters.Converter;
+import com.thoughtworks.xstream.converters.MarshallingContext;
+import com.thoughtworks.xstream.converters.UnmarshallingContext;
+import com.thoughtworks.xstream.io.HierarchicalStreamReader;
+import com.thoughtworks.xstream.io.HierarchicalStreamWriter;
 
 /**
  * Process XML input streams and map to classes.
  */
 public class ReviewboardXmlProcessor {
-
   /**
    * Process input stream, parsing the XML and mapping to provided class.
    */
   public static <T> T process(InputStream res, Class<T> clazz)
   {
+    // List of XML classes
+    final Class<?>[] classes = new Class[] {
+      ReviewRequest.class,
+      ReviewsResponse.class,
+      ReviewsRequests.class,
+      ReviewItem.class,
+      Response.class,
+      Items.class,
+      Item.class,
+      Links.class,
+      Repository.class,
+      User.class,
+      Link.class
+    };
+
     try
     {
-      JAXBContext jaxbContext = JAXBContext.newInstance(clazz);
-      Unmarshaller unmarshaller = jaxbContext.createUnmarshaller();
-      InputStreamReader reader = new InputStreamReader(res);
-      return clazz.cast(unmarshaller.unmarshal(reader));
+      XStream xstream = new XStream();
+
+      // Process the expected class, and allow the full set of XML classes to be loaded
+      xstream.processAnnotations(clazz);
+      xstream.setClassLoader(clazz.getClassLoader());
+      xstream.allowTypes(classes);
+
+      // Not all elements are defined in the XML classes, so allow unknown elements
+      xstream.ignoreUnknownElements();
+
+      return clazz.cast(xstream.fromXML(res));
     } catch (Exception e) {
         throw new RuntimeException(e);
     }
   }
 
   /* ------------------ Utility classes ------------------ */
-  @XmlRootElement(name = "rsp")
-  public static class ReviewRequest {
-    @XmlElement(name = "review_request")
+  @XStreamAlias("rsp")
+  public class ReviewRequest {
+    @XStreamAlias("review_request")
     ReviewItem request;
   }
 
-  @XmlRootElement(name = "rsp")
-  public static class ReviewsResponse {
-    @XmlElement(name = "review_requests")
+  @XStreamAlias("rsp")
+  public class ReviewsResponse {
+    @XStreamAlias("review_requests")
     ReviewsRequests requests;
-    @XmlElement(name = "total_results")
+    @XStreamAlias("total_results")
     int total;
-    @XmlElement
     String stat;
   }
 
-  public static class ReviewsRequests {
-    @XmlElementWrapper
-    @XmlElement(name = "item")
+  public class ReviewsRequests {
     List<ReviewItem> array;
   }
 
-  public static class ReviewItem implements Comparable<ReviewItem> {
-    @XmlJavaTypeAdapter(MyDateAdapter.class)
-    @XmlElement(name = "last_updated")
+  @XStreamAlias("item")
+  public class ReviewItem implements Comparable<ReviewItem> {
+    @XStreamConverter(MyDateAdapter.class)
+    @XStreamAlias("last_updated")
     Date lastUpdated;
-    @XmlElement
     String branch;
-    @XmlElement
     long id;
-    @XmlElement
     Links links;
 
     public int compareTo(ReviewItem o) {
@@ -79,91 +95,68 @@ public class ReviewboardXmlProcessor {
     }
   }
 
-  @XmlRootElement(name = "rsp")
-  public static class Response {
-    @XmlElement(name = "total_results")
+  @XStreamAlias("rsp")
+  public class Response {
+    @XStreamAlias("total_results")
     int count;
-    @XmlElement
     Items diffs;
-    @XmlElement
     Items reviews;
-    @XmlElement
     Items repositories;
-    @XmlElement
     Links links;
   }
 
-  public static class Items {
-    @XmlElementWrapper
-    @XmlElement(name = "item")
+  public class Items {
     List<Item> array;
   }
 
-  public static class Item {
-    @XmlJavaTypeAdapter(MyDateAdapter.class)
-    @XmlElement
+  @XStreamAlias("item")
+  public class Item {
+    @XStreamConverter(MyDateAdapter.class)
     Date timestamp;
-    @XmlElement
     Links links;
     // for repositories
-    @XmlElement
     int id;
-    @XmlElement
     String name;
-    @XmlElement
     String tool;
-    @XmlElement
     String path;
   }
 
-  public static class Links {
-    @XmlElement
+  public class Links {
     User user;
-    @XmlElement
     Repository repository;
-    @XmlElement
     User submitter;
-    @XmlElement
     Link next;
   }
 
-  public static class Repository {
-    @XmlElement
+  public class Repository {
     String title;
   }
 
-  public static class User {
-    @XmlElement
+  public class User {
     String title;
   }
 
-  public static class Link {
-    @XmlElement
+  public class Link {
     String href;
   }
 
-  public static class MyDateAdapter extends XmlAdapter<String, Date> {
-    private static final SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+  public static class MyDateAdapter implements Converter {
+    private static final SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssX");
 
-    @Override
-    public Date unmarshal(String v) throws Exception {
+    public void marshal(Object source, HierarchicalStreamWriter writer, MarshallingContext context) {
+      // Not required
+    }
+
+    public Object unmarshal(HierarchicalStreamReader reader, UnmarshallingContext context) {
       try {
-        return javax.xml.bind.DatatypeConverter.parseDateTime(v).getTime();
-      } catch (IllegalArgumentException iae) { // to support Reviewboard version 1.6
-        try {
-          return formatter.parse(v);
-        } catch (ParseException e) {
-          throw new RuntimeException(e);
-        }
-      }
-    }
+        return formatter.parse(reader.getValue());
+      } catch (ParseException e) {
+        throw new RuntimeException(e);
+       }
+     }
 
-    @Override
-    public String marshal(Date v) throws Exception {
-      Calendar c = GregorianCalendar.getInstance();
-      c.setTime(v);
-      return javax.xml.bind.DatatypeConverter.printDateTime(c);
+    public boolean canConvert(Class type) {
+      return type.equals(Date.class);
     }
-
   }
 }
