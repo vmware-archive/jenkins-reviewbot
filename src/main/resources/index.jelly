@@ -3,5 +3,5 @@
   This view is used to render the installed plugins page.
 -->
 <div>
-  This plugin picks up a Reviewboard request, builds the diff using Patch Plugin and reports the results back to reviewboard.
+  This plugin picks up a Reviewboard request, provides the diff for building with and reports the results back to reviewboard.
 </div>

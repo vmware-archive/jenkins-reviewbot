@@ -115,7 +115,6 @@ public class ReviewboardNotifier extends Notifier implements MatrixAggregatable,
     }
 
     Result result = run.getResult();
-    boolean patchFailed = rbParam.isPatchFailed();
     boolean success = result.equals(Result.SUCCESS);
     boolean unstable = result.equals(Result.UNSTABLE);
 
@@ -123,8 +122,7 @@ public class ReviewboardNotifier extends Notifier implements MatrixAggregatable,
       EnvVars env = run.getEnvironment(listener);
       String link = env.get("BUILD_URL");
       link = decorateLink(run.getFullDisplayName(), link);
-      String msg = patchFailed ? Messages.ReviewboardNotifier_PatchError() + " " + link:
-                   success     ? Messages.ReviewboardNotifier_BuildSuccess() + " " + link:
+      String msg = success     ? Messages.ReviewboardNotifier_BuildSuccess() + " " + link:
                    unstable    ? Messages.ReviewboardNotifier_BuildUnstable() + " " + link:
                                  Messages.ReviewboardNotifier_BuildFailure() + " " + link;
       if (!Strings.isNullOrEmpty(customMessage)) {

@@ -22,8 +22,6 @@ IN THE SOFTWARE.
 
 package org.jenkinsci.plugins.jenkinsreviewbot;
 
-import com.cloudbees.diff.ContextualPatch;
-import com.cloudbees.diff.PatchException;
 import hudson.EnvVars;
 import hudson.Extension;
 import hudson.FilePath;
@@ -44,7 +42,6 @@ import hudson.util.VariableResolver;
 import org.apache.commons.lang.StringUtils;
 import org.kohsuke.stapler.DataBoundConstructor;
 import jenkins.tasks.SimpleBuildWrapper;
-import jenkins.MasterToSlaveFileCallable;
 
 import edu.umd.cs.findbugs.annotations.CheckForNull;
 
@@ -61,7 +58,6 @@ public class ReviewboardParameterValue extends ParameterValue {
 
   @CheckForNull
   private final String url;
-  private boolean patchFailed = false;
   private transient volatile Map<String, String> props = null;
 
   @DataBoundConstructor
@@ -102,14 +98,6 @@ public class ReviewboardParameterValue extends ParameterValue {
 
   private File getLocationUnderBuild(Run<?,?> run) {
     return new File(run.getRootDir(), "fileParameters/" + LOCATION);
-  }
-
-  public boolean isPatchFailed() {
-    return patchFailed;
-  }
-
-  void setPatchFailed(boolean patchFailed) {
-    this.patchFailed = patchFailed;
   }
 
   // copied from PatchParameterValue
@@ -158,23 +146,6 @@ public class ReviewboardParameterValue extends ParameterValue {
     }
   }
 
-  private void applyPatch(TaskListener listener, FilePath patch) throws IOException, InterruptedException {
-    if (ReviewboardNotifier.DESCRIPTOR.getDisableAutoApply()) {
-      listener.getLogger().println("Skipping automatic patch application");
-      return;
-    }
-
-    listener.getLogger().println("Applying "+ ReviewboardNote.encodeTo("the diff"));
-    try {
-      patch.act(new ApplyTask());
-    } catch (IOException e) {
-      listener.getLogger().println("Failed to apply patch due to:");
-      e.printStackTrace(listener.getLogger());
-      setPatchFailed(true);
-      throw e;
-    }
-  }
-
 //  copied from FileParameterValue
   @Override
   public void buildEnvVars(AbstractBuild<?,?> build, EnvVars env) {
@@ -215,9 +186,6 @@ public class ReviewboardParameterValue extends ParameterValue {
         } finally {
           diff.close();
         }
-        if (patch.exists()) {
-          rbParamValue.applyPatch(listener, patch);
-        }
       }
     }
 
@@ -237,24 +205,4 @@ public class ReviewboardParameterValue extends ParameterValue {
     }
 
   }
-
-  static class ApplyTask extends MasterToSlaveFileCallable<Void> {
-    private static final long serialVersionUID = 1L;
-
-    public Void invoke(File diff, VirtualChannel channel) throws IOException, InterruptedException {
-      ContextualPatch patch = ContextualPatch.create(diff,diff.getParentFile());
-      try {
-        List<ContextualPatch.PatchReport> reports = patch.patch(false);
-        for (ContextualPatch.PatchReport r : reports) {
-          Throwable failure = r.getFailure();
-          if (failure != null)
-            throw new IOException("Failed to patch " + r.getFile(), failure);
-        }
-      } catch (PatchException e) {
-        throw new IOException2("Failed to apply the patch: "+diff,e);
-      }
-      return null;
-    }
-  }
-
 }
