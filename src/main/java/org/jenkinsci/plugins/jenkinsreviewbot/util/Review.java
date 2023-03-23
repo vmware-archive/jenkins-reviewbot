@@ -1,7 +1,9 @@
 package org.jenkinsci.plugins.jenkinsreviewbot.util;
 
 import org.jenkinsci.plugins.jenkinsreviewbot.ReviewboardConnection;
-import org.jenkinsci.plugins.jenkinsreviewbot.ReviewboardOps;
+import org.jenkinsci.plugins.jenkinsreviewbot.ReviewboardXmlProcessor;
+
+import java.io.Serializable;
 
 import java.util.Date;
 
@@ -12,9 +14,9 @@ import java.util.Date;
 public class Review {
   private final String url;
   private final Date lastUpdate;
-  private final ReviewboardOps.ReviewItem input;
+  private final ReviewboardXmlProcessor.ReviewItem input;
 
-  public Review(String url, Date lastUpdate, ReviewboardOps.ReviewItem input) {
+  public Review(String url, Date lastUpdate, ReviewboardXmlProcessor.ReviewItem input) {
     this.url = url;
     this.lastUpdate = lastUpdate;
     this.input = input;
@@ -28,7 +30,7 @@ public class Review {
     return lastUpdate;
   }
 
-  public ReviewboardOps.ReviewItem getInput() {
+  public ReviewboardXmlProcessor.ReviewItem getInput() {
     return input;
   }
 
@@ -36,7 +38,7 @@ public class Review {
     return new Slim(url, lastUpdate);
   }
 
-  public static class Slim {
+  public static class Slim implements Serializable {
     private final String url;
     private final Date lastUpdate;
 

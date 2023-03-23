@@ -32,20 +32,10 @@ import org.apache.commons.httpclient.methods.PostMethod;
 import org.jenkinsci.plugins.jenkinsreviewbot.util.Review;
 
 import javax.annotation.Nullable;
-import javax.xml.bind.JAXBContext;
-import javax.xml.bind.JAXBException;
-import javax.xml.bind.Unmarshaller;
-import javax.xml.bind.annotation.XmlElement;
-import javax.xml.bind.annotation.XmlElementWrapper;
-import javax.xml.bind.annotation.XmlRootElement;
-import javax.xml.bind.annotation.adapters.XmlAdapter;
-import javax.xml.bind.annotation.adapters.XmlJavaTypeAdapter;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.text.ParseException;
-import java.text.SimpleDateFormat;
 import java.util.*;
 
 /**
@@ -163,7 +153,7 @@ public class ReviewboardOps {
   private GetMethod execDiffMethod(ReviewboardConnection con, HttpClient http, String url) throws IOException {
     ensureAuthentication(con, http);
     String diffUrl = con.buildApiUrl(url, "diffs");
-    Response d = getResponse(http, diffUrl, Response.class);
+    ReviewboardXmlProcessor.Response d = getResponse(http, diffUrl, ReviewboardXmlProcessor.Response.class);
     if (d.count < 1) throw new RuntimeException("Review " + url + " has no diffs");
 //    String diffUrl = url.concat("diff/raw/");
     GetMethod diff = new GetMethod(diffUrl + d.count + "/");
@@ -181,7 +171,7 @@ public class ReviewboardOps {
 
   public Map<String,String> getProperties(ReviewboardConnection con, String url) throws IOException {
     ensureAuthentication(con, http);
-    ReviewRequest response = getResponse(http, con.buildApiUrl(url, ""), ReviewRequest.class);
+    ReviewboardXmlProcessor.ReviewRequest response = getResponse(http, con.buildApiUrl(url, ""), ReviewboardXmlProcessor.ReviewRequest.class);
     String branch = response.request.branch;
     Map<String,String> m = new HashMap<String,String>();
     m.put("REVIEW_BRANCH", branch == null || branch.isEmpty() ? "master" : branch);
@@ -196,34 +186,38 @@ public class ReviewboardOps {
 
   public Collection<Review.Slim> getPendingReviews(final ReviewboardConnection con, long periodInHours,
                                                    boolean restrictByUser, int repoid)
-          throws IOException, JAXBException, ParseException {
+          throws IOException, ParseException {
+    // Connect to Reviewboard
     ensureAuthentication(con, http);
-    ReviewsResponse response = getResponse(http, con.getPendingReviewsUrl(restrictByUser, repoid), ReviewsResponse.class);
-    List<ReviewItem> list = response.requests.array;
+    ReviewboardXmlProcessor.ReviewsResponse response = getResponse(http, con.getPendingReviewsUrl(restrictByUser, repoid), ReviewboardXmlProcessor.ReviewsResponse.class);
+    // Get a list of the responses
+    List<ReviewboardXmlProcessor.ReviewItem> list = response.requests.array;
     if (list == null || list.isEmpty()) return Collections.emptyList();
     Collections.sort(list, Collections.reverseOrder());
+    // Filter reviews out if too old
     long period = periodInHours >= 0 ? periodInHours * HOUR : HOUR;
     final long coldThreshold = list.get(0).lastUpdated.getTime() - period;
-    Collection<ReviewItem> hot = Collections2.filter(list, new Predicate<ReviewItem>() {
-      public boolean apply(ReviewItem input) {
+    Collection<ReviewboardXmlProcessor.ReviewItem> hot = Collections2.filter(list, new Predicate<ReviewboardXmlProcessor.ReviewItem>() {
+      public boolean apply(ReviewboardXmlProcessor.ReviewItem input) {
         return input.lastUpdated.getTime() >= coldThreshold; //check that the review is not too old
       }
     });
-    Function<ReviewItem, Review> enrich = new Function<ReviewItem, Review>() {
-      public Review apply(@Nullable ReviewItem input) {
-        Response d = getResponse(http, con.getDiffsUrl(input.id), Response.class);
+    // Turn ReviewItem into Review
+    Collection<Review> hotRich = Collections2.transform(hot, new Function<ReviewboardXmlProcessor.ReviewItem, Review>() {
+      public Review apply(@Nullable ReviewboardXmlProcessor.ReviewItem input) {
+        ReviewboardXmlProcessor.Response d = getResponse(http, con.getDiffsUrl(input.id), ReviewboardXmlProcessor.Response.class);
         Date lastUploadTime = d.count < 1 ? null : d.diffs.array.get(d.count - 1).timestamp;
         String url = con.reviewNumberToUrl(Long.toString(input.id));
         return new Review(url, lastUploadTime, input);
       }
-    };
-    Collection<Review> hotRich = Collections2.transform(hot, enrich);
-    Predicate<Review> needsBuild = new Predicate<Review>() {
+    });
+    // Remove reviews requests that have already been reviewed by this program
+    Collection<Review> unhandled = Collections2.filter(hotRich, new Predicate<Review>() {
       public boolean apply(Review input) {
         if (input.getLastUpdate() == null) return false; //no diffs found
-        Response c = getResponse(http, con.getCommentsUrl(input.getInput().id), Response.class);
-        //no comments from this user after last diff upload
-        for (Item r : c.reviews.array) {
+        String commentsUrl = con.getCommentsUrl(input.getInput().id);
+        ReviewboardXmlProcessor.Response c = getResponse(http, commentsUrl, ReviewboardXmlProcessor.Response.class);
+        for (ReviewboardXmlProcessor.Item r : c.reviews.array) {
           if (con.getReviewboardUsername().equals(r.links.user.title) &&
                   r.timestamp.after(input.getLastUpdate())) {
             return false;
@@ -231,12 +225,12 @@ public class ReviewboardOps {
         }
         return true;
       }
-    };
-    Collection<Review> unhandled = Collections2.filter(hotRich, needsBuild);
-    Function<Review, Review.Slim> trim = new Function<Review, Review.Slim>() {
+    });
+    // Turn Review into Review.Slim
+    Collection<Review.Slim> pendingReviews = Collections2.transform(unhandled, new Function<Review, Review.Slim>() {
       public Review.Slim apply(@Nullable Review input) { return input.trim(); }
-    };
-    return Collections2.transform(unhandled, trim);
+    });
+    return pendingReviews;
   }
 
   /* ----------------- post comment -------------------- */
@@ -274,22 +268,22 @@ public class ReviewboardOps {
 
   /* ------------------ get repositories ----------------- */
 
-  public Map<String, Integer> getRepositories() throws IOException, JAXBException, ParseException {
+  public Map<String, Integer> getRepositories() throws IOException, ParseException {
     return getRepositories(ReviewboardConnection.fromConfiguration());
   }
 
-  public Map<String, Integer> getRepositories(ReviewboardConnection con) throws IOException, JAXBException, ParseException {
+  public Map<String, Integer> getRepositories(ReviewboardConnection con) throws IOException, ParseException {
     ensureAuthentication(con, http);
     return getRepositories(con.getRepositoriesUrl());
   }
 
-  private SortedMap<String, Integer> getRepositories(String url) throws IOException, JAXBException, ParseException {
+  private SortedMap<String, Integer> getRepositories(String url) throws IOException, ParseException {
     ReviewboardConnection con = ReviewboardConnection.fromConfiguration();
     ensureAuthentication(con, http);
-    Response response = getResponse(http, url, Response.class);
+    ReviewboardXmlProcessor.Response response = getResponse(http, url, ReviewboardXmlProcessor.Response.class);
     SortedMap<String, Integer> map = new TreeMap<String, Integer>(String.CASE_INSENSITIVE_ORDER);
     if (response.count > 0) {
-      for (Item i : response.repositories.array) {
+      for (ReviewboardXmlProcessor.Item i : response.repositories.array) {
         map.put(i.name, i.id);
       }
       if (response.links.next != null) {
@@ -310,10 +304,7 @@ public class ReviewboardOps {
       code = http.executeMethod(request);
       if (code == 200) {
         InputStream res = request.getResponseBodyAsStream();
-        JAXBContext jaxbContext = JAXBContext.newInstance(clazz);
-        Unmarshaller unmarshaller = jaxbContext.createUnmarshaller();
-        InputStreamReader reader = new InputStreamReader(res);
-        return clazz.cast(unmarshaller.unmarshal(reader));
+        return ReviewboardXmlProcessor.process(res, clazz);
       }
     } catch (Exception e) {
       throw new RuntimeException(e);
@@ -322,128 +313,4 @@ public class ReviewboardOps {
     }
     throw new RuntimeException("Accessing the URL " + requestUrl + " failed with code " + code);
   }
-
-  /* ------------------ utility classes ------------------ */
-
-  @XmlRootElement(name = "rsp")
-  public static class ReviewRequest {
-    @XmlElement(name = "review_request")
-    ReviewItem request;
-  }
-  @XmlRootElement(name = "rsp")
-  public static class ReviewsResponse {
-    @XmlElement(name = "review_requests")
-    ReviewsRequests requests;
-    @XmlElement(name = "total_results")
-    String total;
-    @XmlElement
-    String stat;
-  }
-  public static class ReviewsRequests {
-    @XmlElementWrapper
-    @XmlElement(name = "item")
-    List<ReviewItem> array;
-  }
-  public static class ReviewItem implements Comparable<ReviewItem> {
-    @XmlJavaTypeAdapter(MyDateAdapter.class)
-    @XmlElement(name = "last_updated")
-    Date lastUpdated;
-    @XmlElement
-    String branch;
-    @XmlElement
-    long id;
-    @XmlElement
-    Links links;
-
-    public int compareTo(ReviewItem o) {
-      try {
-        return lastUpdated.compareTo(o.lastUpdated);
-      } catch (Exception e) {
-        return -1;
-      }
-    }
-  }
-  @XmlRootElement(name = "rsp")
-  public static class Response {
-    @XmlElement(name = "total_results")
-    int count;
-    @XmlElement
-    Items diffs;
-    @XmlElement
-    Items reviews;
-    @XmlElement
-    Items repositories;
-    @XmlElement
-    Links links;
-  }
-  public static class Items {
-    @XmlElementWrapper
-    @XmlElement(name = "item")
-    List<Item> array;
-  }
-  public static class Item {
-    @XmlJavaTypeAdapter(MyDateAdapter.class)
-    @XmlElement
-    Date timestamp;
-    @XmlElement
-    Links links;
-    // for repositories
-    @XmlElement
-    int id;
-    @XmlElement
-    String name;
-    @XmlElement
-    String tool;
-    @XmlElement
-    String path;
-  }
-  public static class Links {
-    @XmlElement
-    User user;
-    @XmlElement
-    Repository repository;
-    @XmlElement
-    User submitter;
-    @XmlElement
-    Link next;
-  }
-  public static class Repository {
-    @XmlElement
-    String title;
-  }
-  public static class User {
-    @XmlElement
-    String title;
-  }
-  public static class Link {
-    @XmlElement
-    String href;
-  }
-
-  public static class MyDateAdapter extends XmlAdapter<String, Date> {
-    private static final SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-
-    @Override
-    public Date unmarshal(String v) throws Exception {
-      try {
-        return javax.xml.bind.DatatypeConverter.parseDateTime(v).getTime();
-      } catch (IllegalArgumentException iae) { //to support Reviewboard version 1.6
-        try {
-          return formatter.parse(v);
-        } catch (ParseException e) {
-          throw new RuntimeException(e);
-        }
-      }
-    }
-
-    @Override
-    public String marshal(Date v) throws Exception { //isn't really used
-      Calendar c = GregorianCalendar.getInstance();
-      c.setTime(v);
-      return javax.xml.bind.DatatypeConverter.printDateTime(c);
-//      return formatter.format(v);
-    }
-
-  }
-
 }

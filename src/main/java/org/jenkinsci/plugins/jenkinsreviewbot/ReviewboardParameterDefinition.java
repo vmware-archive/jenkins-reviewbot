@@ -31,6 +31,8 @@ import net.sf.json.JSONObject;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.StaplerRequest;
 
+import org.jenkinsci.Symbol;
+
 import java.io.IOException;
 import java.lang.reflect.Field;
 
@@ -59,7 +61,7 @@ public class ReviewboardParameterDefinition extends StringParameterDefinition {
     return ReviewboardParameterValue.wrap((StringParameterValue) super.createValue(req, jo));
   }
 
-  @Extension
+  @Extension @Symbol("reviewboardReviewUrlParameter")
   public static class DescriptorImpl extends StringParameterDefinition.DescriptorImpl {
     @Override
     public String getDisplayName() {
